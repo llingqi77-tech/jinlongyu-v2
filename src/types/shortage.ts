@@ -1,39 +1,29 @@
 export type WorkbenchRole = 'ops' | 'sales' | 'procurement'
 
-export type PipelineStageFilter =
-  | 'procurement_advice'
-  | 'sales_method'
-  | 'procurement'
-  | 'fulfillment_done'
-
-export type PipelineStageKey = 'ops_create' | PipelineStageFilter
+export type PipelineStageKey = 'ops_create' | 'procurement' | 'sales_defer' | 'fulfillment_done'
 
 export type FulfillmentMethod =
   | 'pending'
   | 'direct_ship'
   | 'normal_replenishment'
   | 'defer'
-  | 'must_on_time'
+  | 'satisfied'
   | 'substitute'
 
 export type SalesOutboundType = 'order_direct' | 'backorder' | null
 
-export type SignoffStatus = 'pending' | 'partial' | 'signed'
-
-export type SupplierStockStatus = 'unknown' | 'yes' | 'no'
-
-/** @deprecated 保留兼容 mock 迁移 */
-export type SalesUrgency = 'must_on_time' | 'normal' | 'pending'
+export type SignoffStatus = 'pending' | 'signed'
 
 export type ProcurementMode = 'urgent' | 'normal' | 'pending'
 
-/** 当期到货（加急）寻源：供应商选定后须先走 OA 审批 */
 export type OaApprovalStatus = 'none' | 'pending' | 'approved' | 'rejected'
+
+export type DeliveryMethod = 'warehouse' | 'direct'
+
+export type ProcurementOutcome = 'pending' | 'satisfied' | 'not_satisfied'
 
 export type ShortageLineStatus =
   | 'new'
-  | 'await_ops'
-  | 'await_sales'
   | 'await_procurement'
   | 'await_logistics'
   | 'ready_for_po'
@@ -43,8 +33,6 @@ export type ShortageLineStatus =
 export interface SupplierCandidate {
   id: string
   name: string
-  score: number
-  hasStock: SupplierStockStatus
 }
 
 export interface ShortagePOLine {
@@ -59,35 +47,35 @@ export interface ShortagePOLine {
   isShortage: boolean
   availableStock: number
   gap: number
-  /** 采购缺货履约建议（阶段二确认后流转销售） */
-  opsAdvice: string
-  /** 有在途订单时后台可判为正常补货 */
   hasInTransitOrder?: boolean
   fulfillmentMethod: FulfillmentMethod
   salesNote: string
   salesOutboundType: SalesOutboundType
   salesOutboundNo: string
-  expectedFulfillQty: number
   actualFulfillQty: number
   signoffStatus: SignoffStatus
   signoffAt: string
   recommendedSuppliers: SupplierCandidate[]
   selectedSupplierId: string
   supplierName: string
+  procurementPrice: number
+  lastPurchasePrice: number
   amount: number
   procurementDraftNo: string
   procurementConfirmed: boolean
-  /** OA 审批（must_on_time 寻源必选） */
   oaApprovalStatus: OaApprovalStatus
   oaRequestNo: string
-  /** @deprecated */
-  salesUrgency: SalesUrgency
   eta: string
+  deliveryMethod: DeliveryMethod | null
+  procurementOutcome: ProcurementOutcome
+  procurementCategory?: string
   isExpedited: boolean
   expediteFee: number
   procurementMode: ProcurementMode
   status: ShortageLineStatus
   opsPoNumber: string
+  /** 采购提交后推送给销售的时间（按品+批次聚合通知） */
+  salesProcurementNotifiedAt: string
 }
 
 export interface ShortagePO {
@@ -104,16 +92,18 @@ export interface SkuHotelSubRow {
   lineId: string
   poId: string
   hotelName: string
+  deliveryAddress: string
   gap: number
   unit: string
   requiredDeliveryDate: string
   daysRemaining: number
   fulfillmentMethod: FulfillmentMethod
-  salesNote: string
   supplierName: string
+  eta: string
   amount: number
   status: ShortageLineStatus
   procurementConfirmed: boolean
+  procurementOutcome: ProcurementOutcome
 }
 
 export interface ProcurementSkuGroup {
@@ -124,10 +114,9 @@ export interface ProcurementSkuGroup {
   totalGap: number
   hotelCount: number
   lineCount: number
-  mustOnTimeCount: number
   earliestRequiredDate: string
   latestRequiredDate: string
-  procurementStatus: 'pending' | 'partial' | 'done'
+  procurementStatus: 'pending' | 'done'
   hotelRows: SkuHotelSubRow[]
 }
 
@@ -141,23 +130,53 @@ export interface SalesHotelLineItem {
   unit: string
   quantity: number
   requiredDeliveryDate: string
-  opsAdvice: string
   fulfillmentMethod: FulfillmentMethod
-  salesNote: string
+  eta: string
   status: ShortageLineStatus
+  procurementOutcome: ProcurementOutcome
 }
 
 export interface SalesHotelGroup {
   hotelKey: string
   hotelName: string
+  deliveryAddress: string
   shortageLineCount: number
-  completedCount: number
-  completionRate: number
-  isComplete: boolean
   nearestDeliveryDate: string
-  pendingProducts: string[]
   poIds: string[]
   lines: SalesHotelLineItem[]
+}
+
+export interface SalesSkuUpdateHotelRow {
+  lineId: string
+  poId: string
+  hotelName: string
+  deliveryAddress: string
+  gap: number
+  unit: string
+  requiredDeliveryDate: string
+  fulfillmentMethod: FulfillmentMethod
+  procurementOutcome: ProcurementOutcome
+  eta: string
+}
+
+/** 采购更新后推送给销售的一条通知（按品 + 批次） */
+export interface SalesSkuUpdateBatch {
+  batchKey: string
+  sku: string
+  productName: string
+  spec: string
+  notifiedAt: string
+  hotelCount: number
+  lineCount: number
+  hotels: SalesSkuUpdateHotelRow[]
+}
+
+/** 一次采购更新内按酒店分组（轮播页） */
+export interface SalesSkuUpdateHotelGroup {
+  hotelKey: string
+  hotelName: string
+  deliveryAddress: string
+  rows: SalesSkuUpdateHotelRow[]
 }
 
 export interface ActivityEvent {
@@ -169,47 +188,7 @@ export interface ActivityEvent {
   ref?: { poId?: string; sku?: string; hotel?: string }
 }
 
-export interface SupplyPlanInput {
-  supplierName: string
-  amount: number
-}
-
-export interface PipelineStageStats {
-  pending: number
-  done: number
-  totalSkus: number
-  customerCount: number
-}
-
-export interface PipelineStats {
-  procurementAdvice: PipelineStageStats
-  salesMethod: PipelineStageStats
-  procurement: PipelineStageStats
-  fulfillment: PipelineStageStats
-}
-
-export type PipelineChevronTone = 'warm' | 'green' | 'blue'
-
-export interface PipelineChevronStage {
-  key: PipelineStageKey
-  title: string
-  /** 任务页副标题 */
-  taskPageTitle?: string
-  tone: PipelineChevronTone
-  row1Value: number
-  row1Label: string
-  row2Value: number
-  row2Label: string
-  /** 已完成占比 0–100（已完成 / (待完成 + 已完成)） */
-  progressPercent: number
-  progressDone: number
-  progressTotal: number
-  /** 该阶段有角色待办时展示「进入任务执行」并切换到此角色 */
-  actionRole?: WorkbenchRole
-}
-
 export interface FulfillmentKpis {
-  expectedQty: number
   actualQty: number
   totalGap: number
   signedSkuCount: number
@@ -224,20 +203,19 @@ export interface RoleTaskItem {
   title: string
   sub: string
   stage: PipelineStageKey
-  /** 手机端 Agent 首页：客户交货日 */
   requiredDeliveryDate?: string
   gap?: number
   unit?: string
   stageLabel?: string
-  /** 交期越近分值越高，用于排序 */
   urgencyScore?: number
   customerName?: string
   productName?: string
+  deliveryAddress?: string
 }
 
 export type MobileAgentPhase = 'idle' | 'awaiting_task_input' | 'confirming'
 
-export type MobileOnboardingPhase = 'role_pick' | 'activating' | 'ready'
+export type MobileOnboardingPhase = 'role_pick' | 'ready'
 
 export type MobileChatMessageKind =
   | 'text'
@@ -250,8 +228,8 @@ export type MobileChatMessageKind =
 export interface MobileSupplierOption {
   index: number
   name: string
-  hasStock: SupplierStockStatus
-  suggestedAmount: number
+  suggestedPrice: number
+  lastPurchasePrice: number
 }
 
 export interface MobileOrderInfoDetail {
@@ -297,22 +275,64 @@ export interface MobileChatMessage {
   stream?: boolean
 }
 
-/** 移动端 KPI 统计维度 */
-export type MobileKpiDimension = 'sku' | 'hotel' | 'po'
-
 export interface MobileHomeKpis {
-  dimension: MobileKpiDimension
-  fulfilledCount: number
-  pendingTaskCount: number
-  /** 当前维度下的缺货计数（展示名随维度变化） */
   shortageLineCount: number
-  shortageSkuCount: number
+  procurementSubmittedCount: number
+  logisticsClosedCount: number
   totalGap: number
 }
 
-export type TaskFlowKind = 'sales_method' | 'procurement_advice' | 'procurement'
+export type MobileKpiKind = 'shortage' | 'submitted' | 'logistics'
 
-/** 覆盖大盘的全屏层：运营对话或各角色任务流 */
+export interface KpiSkuPoRow {
+  lineId: string
+  poId: string
+  hotelName: string
+  deliveryAddress: string
+  gap: number
+  unit: string
+  requiredDeliveryDate: string
+  status: ShortageLineStatus
+  procurementOutcome: ProcurementOutcome
+  fulfillmentMethod: FulfillmentMethod
+  supplierName: string
+  eta: string
+  oaApprovalStatus: OaApprovalStatus
+}
+
+export interface KpiSkuGroup {
+  sku: string
+  productName: string
+  spec: string
+  unit: string
+  lineCount: number
+  totalGap: number
+  oaApprovalStatus?: OaApprovalStatus
+  poRows: KpiSkuPoRow[]
+}
+
+export interface KpiClosedPoLine {
+  lineId: string
+  sku: string
+  productName: string
+  spec: string
+  gap: number
+  unit: string
+  signoffStatus: SignoffStatus
+  signoffAt: string
+}
+
+export interface KpiClosedPoGroup {
+  poId: string
+  customerName: string
+  deliveryAddress: string
+  requiredDeliveryDate: string
+  trackingNo: string
+  lines: KpiClosedPoLine[]
+}
+
+export type TaskFlowKind = 'procurement'
+
 export type WorkbenchOverlayView = 'ops_chat' | TaskFlowKind
 
 export interface MethodMixItem {
@@ -337,3 +357,37 @@ export interface FulfillmentDoneSummary {
   completedLineCount: number
   methodMix: MethodMixItem[]
 }
+
+export interface SubmitProcurementPayload {
+  outcome: 'satisfied' | 'not_satisfied'
+  supplierName?: string
+  price?: number
+  eta?: string
+  deliveryMethod?: DeliveryMethod
+}
+
+export interface SubmitProcurementSkuBatchRow {
+  lineId: string
+  fulfillmentMode: 'urgent' | 'defer'
+  supplierName?: string
+  price?: number
+  eta?: string
+  deliveryMethod?: DeliveryMethod
+  actualFulfillQty: number
+}
+
+export interface SubmitProcurementSkuBatchPayload {
+  sku: string
+  rows: SubmitProcurementSkuBatchRow[]
+}
+
+export type ProcurementPoFormState = {
+  fulfillmentMode: 'urgent' | 'defer' | null
+  supplierName: string
+  price: string
+  eta: string
+  deliveryMethod: DeliveryMethod
+}
+
+/** 角色选择页「OA 提醒通知」预览场景 */
+export type ProcurementOaPreviewOutcome = 'approved' | 'rejected'

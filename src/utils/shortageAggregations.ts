@@ -1,28 +1,28 @@
 import type {
   FulfillmentDoneSummary,
   FulfillmentMethod,
+  FulfillmentKpis,
+  KpiClosedPoGroup,
+  KpiSkuGroup,
+  KpiSkuPoRow,
   OpsCreateSummary,
-  PipelineStageFilter,
-  PipelineStats,
-  PipelineStageStats,
+  OaApprovalStatus,
   ProcurementSkuGroup,
   RoleTaskItem,
   SalesHotelGroup,
+  SalesSkuUpdateBatch,
+  SalesSkuUpdateHotelGroup,
   ShortagePO,
   ShortagePOLine,
-  FulfillmentKpis,
-  PipelineChevronStage,
-  PipelineStageKey,
-  TaskFlowKind,
   WorkbenchRole,
 } from '../types/shortage'
-import { FULFILLMENT_METHOD_LABEL } from '../constants/shortageLabels'
+import { FULFILLMENT_METHOD_LABEL, OA_APPROVAL_STATUS_LABEL } from '../constants/shortageLabels'
 import {
   isLogisticsFulfillment,
-  lineNeedsProcurementAdvice,
+  lineNeedsProcurementAction,
   resolveBackendLogisticsMethod,
 } from './fulfillmentMethodRules'
-import { getRecommendedSuppliers } from './supplierRecommendations'
+import { getPrimarySupplier } from './supplierRecommendations'
 
 export function getShortageLines(orders: ShortagePO[]): Array<ShortagePOLine & { po: ShortagePO }> {
   return orders.flatMap((po) =>
@@ -30,7 +30,6 @@ export function getShortageLines(orders: ShortagePO[]): Array<ShortagePOLine & {
   )
 }
 
-/** 本地日历日 YYYY-MM-DD（避免 toISOString UTC 导致「今日」过滤错位） */
 export function localDateKey(date: Date): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -56,7 +55,6 @@ export function toDateKey(date: Date | string): string {
   return localDateKey(date)
 }
 
-/** 交货日为当天（当日需完成任务口径） */
 export function isDeliveryToday(requiredDate: string, ref = new Date()): boolean {
   return toDateKey(requiredDate) === toDateKey(ref)
 }
@@ -73,7 +71,6 @@ export function getWeekRange(ref = new Date()): { start: string; end: string } {
   return { start: toDateKey(weekStart), end: toDateKey(weekEnd) }
 }
 
-/** 交货日落在本周一至周日 */
 export function isDeliveryThisWeek(requiredDate: string, ref = new Date()): boolean {
   const key = toDateKey(requiredDate)
   const { start, end } = getWeekRange(ref)
@@ -95,6 +92,18 @@ function filterDailyLines(lines: ShortageLineWithPo[], ref = new Date()): Shorta
   return lines.filter((l) => isDeliveryToday(l.po.requiredDeliveryDate, ref))
 }
 
+/** 采购任务清单：今日起 3 日内交期的 PO */
+export function isProcurementTaskHorizon(requiredDate: string, ref = new Date()): boolean {
+  const key = toDateKey(requiredDate)
+  const start = toDateKey(ref)
+  const end = toDateKey(addCalendarDays(ref, 2))
+  return key >= start && key <= end
+}
+
+function filterProcurementTaskLines(lines: ShortageLineWithPo[], ref = new Date()): ShortageLineWithPo[] {
+  return lines.filter((l) => isProcurementTaskHorizon(l.po.requiredDeliveryDate, ref))
+}
+
 function filterWeeklyLines(lines: ShortageLineWithPo[], ref = new Date()): ShortageLineWithPo[] {
   return lines.filter((l) => isDeliveryThisWeek(l.po.requiredDeliveryDate, ref))
 }
@@ -103,69 +112,9 @@ export function uniqueShortageSkus(lines: ShortagePOLine[]): string[] {
   return [...new Set(lines.filter((l) => l.isShortage).map((l) => l.sku))]
 }
 
-function skuStageDone(sku: string, lines: ShortagePOLine[], check: (l: ShortagePOLine) => boolean): boolean {
-  const skuLines = lines.filter((l) => l.isShortage && l.sku === sku)
-  return skuLines.length > 0 && skuLines.every(check)
-}
-
-function countSkusByPredicate(lines: ShortagePOLine[], predicate: (sku: string) => boolean): number {
-  const skus = uniqueShortageSkus(lines)
-  return skus.filter(predicate).length
-}
-
-export function isProcurementAdviceDone(line: ShortagePOLine): boolean {
-  if (isLogisticsFulfillment(line.fulfillmentMethod)) return true
-  if (!lineNeedsProcurementAdvice(line)) return true
-  return !!line.opsAdvice.trim()
-}
-
-/** @deprecated 使用 isProcurementAdviceDone */
-export const isOpsAdviceDone = isProcurementAdviceDone
-
-export function isSalesMethodDone(line: ShortagePOLine): boolean {
-  return line.fulfillmentMethod !== 'pending'
-}
-
-export function isProcurementSku(line: ShortagePOLine): boolean {
-  return line.isShortage && line.fulfillmentMethod === 'must_on_time'
-}
-
 export function isProcurementDone(line: ShortagePOLine): boolean {
-  if (!isProcurementSku(line)) return true
-  return line.procurementConfirmed && !!line.supplierName && line.amount > 0
-}
-
-export type ProcurementSourcingSubstep = 'supplier' | 'po'
-
-/** 采购寻源待办子步骤：待确定供应商 / 已提交 OA 待提交采购订单 */
-export function classifyProcurementSourcingSubstep(
-  line: ShortagePOLine
-): ProcurementSourcingSubstep | null {
-  if (!isProcurementSku(line) || isProcurementDone(line)) return null
-  if (
-    !line.supplierName ||
-    line.amount <= 0 ||
-    line.oaApprovalStatus === 'none' ||
-    line.oaApprovalStatus === 'rejected'
-  ) {
-    return 'supplier'
-  }
-  if (!line.procurementConfirmed) return 'po'
-  return null
-}
-
-export function getProcurementSourcingBreakdown(orders: ShortagePO[], refDate = new Date()) {
-  const scoped = filterDailyLines(getShortageLines(orders), refDate).filter((l) =>
-    lineMatchesPipelineFilter(l, 'procurement')
-  )
-  let supplierPending = 0
-  let poPending = 0
-  for (const line of scoped) {
-    const sub = classifyProcurementSourcingSubstep(line)
-    if (sub === 'supplier') supplierPending++
-    else if (sub === 'po') poPending++
-  }
-  return { supplierPending, poPending, total: supplierPending + poPending }
+  if (line.procurementOutcome === 'not_satisfied') return true
+  return line.procurementOutcome === 'satisfied' && line.procurementConfirmed
 }
 
 export function isFulfillmentDone(line: ShortagePOLine): boolean {
@@ -173,540 +122,190 @@ export function isFulfillmentDone(line: ShortagePOLine): boolean {
 }
 
 export function needsLogistics(line: ShortagePOLine): boolean {
-  if (!line.isShortage || line.fulfillmentMethod === 'pending') return false
-  if (line.fulfillmentMethod === 'must_on_time' && !line.procurementConfirmed) return false
-  return ['direct_ship', 'normal_replenishment', 'defer'].includes(line.fulfillmentMethod)
+  if (!line.isShortage) return false
+  if (isLogisticsFulfillment(line.fulfillmentMethod)) return true
+  if (line.procurementOutcome === 'satisfied' && line.procurementConfirmed) return true
+  if (line.procurementOutcome === 'not_satisfied' || line.fulfillmentMethod === 'defer') return true
+  return false
 }
 
-export function isLineVisibleToProcurement(line: ShortagePOLine): boolean {
-  return isProcurementSku(line) && isSalesMethodDone(line) && isProcurementAdviceDone(line)
+export function isSalesDeferLine(line: ShortagePOLine): boolean {
+  return (
+    line.isShortage &&
+    (line.procurementOutcome === 'not_satisfied' || line.fulfillmentMethod === 'defer')
+  )
 }
 
-export function lineReadyForPo(line: ShortagePOLine): boolean {
-  return isProcurementDone(line) && !!line.procurementDraftNo && !line.procurementConfirmed
+/** 销售可见：采购加急通道（排除直发/正常补货等自动算路） */
+export function isSalesUrgentLine(line: ShortagePOLine): boolean {
+  if (!line.isShortage || isLogisticsFulfillment(line.fulfillmentMethod)) return false
+  return (
+    line.procurementMode === 'urgent' ||
+    (line.procurementOutcome === 'satisfied' && line.fulfillmentMethod === 'satisfied')
+  )
 }
 
-export function getProcurementDisplayStatus(line: ShortagePOLine): 'pending_input' | 'done' {
-  if (isProcurementDone(line)) return 'done'
-  return 'pending_input'
+/** 销售可见：采购尚未确认（待采购处理） */
+export function isSalesPendingProcurementLine(line: ShortagePOLine): boolean {
+  if (!line.isShortage || isLogisticsFulfillment(line.fulfillmentMethod)) return false
+  if (isSalesDeferLine(line) || isSalesUrgentLine(line)) return false
+  return line.fulfillmentMethod === 'pending' || line.status === 'await_procurement'
+}
+
+/** 销售 KPI / 通知：加急 + 延期 + 待采购处理 */
+export function isSalesTrackedShortageLine(line: ShortagePOLine): boolean {
+  return isSalesDeferLine(line) || isSalesUrgentLine(line) || isSalesPendingProcurementLine(line)
+}
+
+function filterLinesForRole(
+  lines: ShortageLineWithPo[],
+  role?: WorkbenchRole
+): ShortageLineWithPo[] {
+  if (role !== 'sales') return lines
+  return lines.filter((l) => isSalesTrackedShortageLine(l))
 }
 
 export function recomputeLineStatus(line: ShortagePOLine): ShortagePOLine {
   if (line.status === 'cancelled') return line
   if (isFulfillmentDone(line)) return { ...line, status: 'completed' }
   if (!line.isShortage) return { ...line, status: 'new' }
-  if (!isProcurementAdviceDone(line)) return { ...line, status: 'await_ops' }
-  if (!isSalesMethodDone(line)) return { ...line, status: 'await_sales' }
-  if (line.fulfillmentMethod === 'must_on_time' && !isProcurementDone(line)) {
+
+  if (lineNeedsProcurementAction(line)) {
+    if (line.procurementOutcome === 'satisfied' && line.oaApprovalStatus === 'approved') {
+      if (line.procurementDraftNo && !line.procurementConfirmed) {
+        return { ...line, status: 'ready_for_po' }
+      }
+      return { ...line, status: 'await_logistics' }
+    }
+    if (line.procurementOutcome === 'satisfied' && line.oaApprovalStatus === 'pending') {
+      return { ...line, status: 'await_procurement' }
+    }
     return { ...line, status: 'await_procurement' }
   }
+
   if (needsLogistics(line) && line.signoffStatus !== 'signed') {
     return { ...line, status: 'await_logistics' }
   }
-  if (line.procurementDraftNo && !line.procurementConfirmed) {
-    return { ...line, status: 'ready_for_po' }
-  }
+
   return { ...line, status: 'new' }
-}
-
-export function getPipelineStats(orders: ShortagePO[]): PipelineStats {
-  const lines = getShortageLines(orders)
-  const allLines = lines.map((l) => l)
-  const skus = uniqueShortageSkus(allLines)
-  const customerCount = new Set(lines.map((l) => l.po.customerName)).size
-
-  const adviceScope = allLines.filter(lineNeedsProcurementAdvice)
-  const adviceSkus = uniqueShortageSkus(adviceScope)
-  const procAdvicePending = countSkusByPredicate(adviceScope, (sku) =>
-    !skuStageDone(sku, adviceScope, isProcurementAdviceDone)
-  )
-  const salesScope = allLines.filter(
-    (l) => lineNeedsProcurementAdvice(l) && isProcurementAdviceDone(l)
-  )
-  const salesPending = countSkusByPredicate(
-    salesScope,
-    (sku) => !skuStageDone(sku, salesScope, isSalesMethodDone)
-  )
-  const procLines = allLines.filter(isProcurementSku)
-  const procSkus = uniqueShortageSkus(procLines)
-  const procPending = procSkus.filter(
-    (sku) => !skuStageDone(sku, procLines, isProcurementDone)
-  ).length
-  const fulfillPending = countSkusByPredicate(allLines, (sku) =>
-    !skuStageDone(sku, allLines, isFulfillmentDone)
-  )
-
-  const stage = (pending: number, done: number, total: number): PipelineStageStats => ({
-    pending,
-    done,
-    totalSkus: total,
-    customerCount,
-  })
-
-  return {
-    procurementAdvice: stage(procAdvicePending, adviceSkus.length - procAdvicePending, adviceSkus.length),
-    salesMethod: stage(
-      salesPending,
-      uniqueShortageSkus(salesScope).length - salesPending,
-      uniqueShortageSkus(salesScope).length
-    ),
-    procurement: stage(procPending, procSkus.length - procPending, procSkus.length),
-    fulfillment: stage(fulfillPending, skus.length - fulfillPending, skus.length),
-  }
-}
-
-function pipelineProgress(done: number, pending: number) {
-  const total = done + pending
-  return {
-    progressDone: done,
-    progressTotal: total,
-    progressPercent: total > 0 ? Math.round((done / total) * 100) : 0,
-  }
-}
-
-/** 履约进度五段展示（前四段按当日交货任务统计，履约完成按本周统计） */
-export function getPipelineChevronStages(
-  orders: ShortagePO[],
-  refDate = new Date()
-): PipelineChevronStage[] {
-  const allLines = getShortageLines(orders)
-  const dailyLines = filterDailyLines(allLines, refDate)
-  const weeklyLines = filterWeeklyLines(allLines, refDate)
-
-  const dailyTaskCount = dailyLines.length
-  const dailyHotelCount = new Set(dailyLines.map((l) => l.po.customerName)).size
-
-  const adviceLines = dailyLines.filter(lineNeedsProcurementAdvice)
-  const adviceSkuCount = uniqueShortageSkus(adviceLines).length
-  const procAdvicePending = countSkusByPredicate(adviceLines, (sku) =>
-    !skuStageDone(sku, adviceLines, isProcurementAdviceDone)
-  )
-  const procAdviceDone = adviceSkuCount - procAdvicePending
-
-  const salesLines = dailyLines.filter(
-    (l) => lineNeedsProcurementAdvice(l) && isProcurementAdviceDone(l)
-  )
-  const salesSkuCount = uniqueShortageSkus(salesLines).length
-  const salesPending = countSkusByPredicate(
-    salesLines,
-    (sku) => !skuStageDone(sku, salesLines, isSalesMethodDone)
-  )
-  const salesDone = salesSkuCount - salesPending
-
-  const procLines = dailyLines.filter(isProcurementSku)
-  const procSkus = uniqueShortageSkus(procLines)
-  const procTotal = procSkus.length
-  const procPending = procSkus.filter(
-    (sku) => !skuStageDone(sku, procLines, isProcurementDone)
-  ).length
-  const procDone = procTotal - procPending
-
-  const weeklySkuCount = uniqueShortageSkus(weeklyLines).length
-  const weeklyHotelCount = new Set(weeklyLines.map((l) => l.po.customerName)).size
-  const fulfillDone = countSkusByPredicate(weeklyLines, (sku) =>
-    skuStageDone(sku, weeklyLines, isFulfillmentDone)
-  )
-  const fulfillPending = weeklySkuCount - fulfillDone
-
-  const createProgress = pipelineProgress(dailyTaskCount, 0)
-
-  return [
-    {
-      key: 'ops_create',
-      title: '履约任务创建',
-      tone: 'warm',
-      row1Value: dailyTaskCount,
-      row1Label: '个待履约任务',
-      row2Value: dailyHotelCount,
-      row2Label: '个酒店',
-      ...createProgress,
-    },
-    {
-      key: 'procurement_advice',
-      title: '采购提供缺货履约建议',
-      taskPageTitle: '采购确认缺货履约建议',
-      tone: 'warm',
-      row1Value: procAdvicePending,
-      row1Label: '个品（待完成）',
-      row2Value: procAdviceDone,
-      row2Label: '个品（已完成）',
-      ...pipelineProgress(procAdviceDone, procAdvicePending),
-      actionRole: 'procurement',
-    },
-    {
-      key: 'sales_method',
-      title: '销售沟通缺货履约方式',
-      tone: 'green',
-      row1Value: salesPending,
-      row1Label: '个品（待完成）',
-      row2Value: salesDone,
-      row2Label: '个品（已完成）',
-      ...pipelineProgress(salesDone, salesPending),
-      actionRole: 'sales',
-    },
-    {
-      key: 'procurement',
-      title: '采购执行缺货寻源',
-      tone: 'blue',
-      row1Value: procPending,
-      row1Label: '个品（待完成）',
-      row2Value: procDone,
-      row2Label: '个品（已完成）',
-      ...pipelineProgress(procDone, procPending),
-      actionRole: 'procurement',
-    },
-    {
-      key: 'fulfillment_done',
-      title: '履约任务完成',
-      tone: 'warm',
-      row1Value: weeklySkuCount,
-      row1Label: '个品',
-      row2Value: weeklyHotelCount,
-      row2Label: '个酒店',
-      ...pipelineProgress(fulfillDone, fulfillPending),
-    },
-  ]
-}
-
-export function getStagePendingCount(
-  orders: ShortagePO[],
-  stageKey: PipelineStageKey,
-  refDate = new Date()
-): number {
-  const stage = getPipelineChevronStages(orders, refDate).find((s) => s.key === stageKey)
-  if (!stage) return 0
-  if (stageKey === 'ops_create') return stage.row1Value
-  return Math.max(0, stage.progressTotal - stage.progressDone)
-}
-
-export function getPipelineBottleneckStage(
-  orders: ShortagePO[],
-  refDate = new Date()
-): { key: PipelineStageKey; pending: number } | null {
-  const stages = getPipelineChevronStages(orders, refDate)
-  let best: PipelineChevronStage | null = null
-  let maxPending = 0
-
-  for (const stage of stages) {
-    if (stage.key === 'ops_create') continue
-    const pending = Math.max(0, stage.progressTotal - stage.progressDone)
-    if (pending > maxPending) {
-      maxPending = pending
-      best = stage
-    }
-  }
-
-  if (!best || maxPending === 0) return null
-  return { key: best.key, pending: maxPending }
 }
 
 export function getFulfillmentKpis(orders: ShortagePO[]): FulfillmentKpis {
   const lines = getShortageLines(orders)
   const skus = uniqueShortageSkus(lines.map((l) => l))
   return {
-    expectedQty: lines.reduce((s, l) => s + l.expectedFulfillQty, 0),
     actualQty: lines.reduce((s, l) => s + l.actualFulfillQty, 0),
     totalGap: lines.reduce((s, l) => s + l.gap, 0),
-    signedSkuCount: countSkusByPredicate(
-      lines.map((l) => l),
-      (sku) => skuStageDone(sku, lines.map((l) => l), isFulfillmentDone)
-    ),
+    signedSkuCount: skus.filter((sku) =>
+      lines.filter((l) => l.sku === sku).every(isFulfillmentDone)
+    ).length,
     totalSkuCount: skus.length,
   }
 }
 
-export const STAGE_ACTION_ROLE: Record<PipelineStageKey, WorkbenchRole | undefined> = {
-  ops_create: undefined,
-  procurement_advice: 'procurement',
-  sales_method: 'sales',
-  procurement: 'procurement',
-  fulfillment_done: undefined,
+export function hotelKey(customerName: string, deliveryAddress: string): string {
+  return `${customerName}::${deliveryAddress}`
 }
 
-function lineInStageDetail(line: ShortagePOLine, stageKey: PipelineStageKey): boolean {
-  if (!line.isShortage) return false
-  switch (stageKey) {
-    case 'ops_create':
-      return true
-    case 'procurement_advice':
-      return lineNeedsProcurementAdvice(line)
-    case 'sales_method':
-      return lineNeedsProcurementAdvice(line) && isProcurementAdviceDone(line)
-    case 'procurement':
-      return isLineVisibleToProcurement(line)
-    case 'fulfillment_done':
-      return isSalesMethodDone(line) || isLogisticsFulfillment(line.fulfillmentMethod)
-  }
-}
-
-function stageDetailSub(
-  line: ShortagePOLine & { po: ShortagePO },
-  stageKey: PipelineStageKey
-): string {
-  const base = `还缺 ${line.gap}${line.unit} · 交货 ${line.po.requiredDeliveryDate}`
-  switch (stageKey) {
-    case 'ops_create':
-      return `${line.po.id} · ${base}`
-    case 'procurement_advice':
-      return isProcurementAdviceDone(line)
-        ? `建议：${line.opsAdvice}`
-        : `待到仓+物流测算并确认建议 · ${base}`
-    case 'sales_method':
-      return line.fulfillmentMethod === 'pending'
-        ? `待确认履约方式 · ${base}`
-        : `已确认 · ${FULFILLMENT_METHOD_LABEL[line.fulfillmentMethod]}`
-    case 'procurement':
-      if (isProcurementDone(line)) {
-        return `已寻源 · ${line.supplierName} · PO ${line.opsPoNumber || line.procurementDraftNo}`
-      }
-      if (classifyProcurementSourcingSubstep(line) === 'supplier') {
-        return `①待确定供应商 · ${base}`
-      }
-      if (line.oaApprovalStatus === 'pending') {
-        return `②OA审批中 · ${base}`
-      }
-      return `②待提交采购订单 · ${base}`
-    case 'fulfillment_done':
-      return isFulfillmentDone(line) ? '已签收完成' : `履约中 · ${base}`
-  }
-}
-
-export function getStageDetailItems(
-  orders: ShortagePO[],
-  stageKey: PipelineStageKey,
-  refDate = new Date()
-): RoleTaskItem[] {
-  if (stageKey === 'ops_create') {
-    return getOpsCreateTaskItems(orders, refDate)
-  }
-
-  const allLines = getShortageLines(orders)
-  const scoped =
-    stageKey === 'fulfillment_done'
-      ? filterWeeklyLines(allLines, refDate)
-      : filterDailyLines(allLines, refDate)
-
-  return scoped
-    .filter((l) => lineInStageDetail(l, stageKey))
-    .map((l) => ({
-      id: l.id,
-      lineId: l.id,
-      poId: l.po.id,
-      sku: l.sku,
-      title: `${l.po.customerName} · ${l.productName}`,
-      sub: stageDetailSub(l, stageKey),
-      stage: stageKey,
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
-}
-
-/** 任务创建阶段按酒店+品项划分（每条缺货行一项待履约任务） */
-export function getOpsCreateTaskItems(
-  orders: ShortagePO[],
-  refDate = new Date()
-): RoleTaskItem[] {
-  const dailyLines = filterDailyLines(getShortageLines(orders), refDate)
-
-  return dailyLines
-    .map((l) => ({
-      id: l.id,
-      lineId: l.id,
-      poId: l.po.id,
-      sku: l.sku,
-      title: `${l.po.customerName} · ${l.productName}`,
-      sub: `交期 ${l.po.requiredDeliveryDate} · 缺 ${l.gap}${l.unit}`,
-      stage: 'ops_create' as const,
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
-}
-
-export function getPipelineBottleneckStageKey(
-  orders: ShortagePO[],
-  refDate = new Date()
-): PipelineStageKey | null {
-  const stages = getPipelineChevronStages(orders, refDate)
-  let maxPending = 0
-  let bottleneck: PipelineStageKey | null = null
-
-  for (const stage of stages) {
-    if (stage.key === 'ops_create') continue
-    const pending = Math.max(0, stage.progressTotal - stage.progressDone)
-    if (pending > maxPending) {
-      maxPending = pending
-      bottleneck = stage.key
-    }
-  }
-
-  return maxPending > 0 ? bottleneck : null
-}
-
-export function getStagePendingDetailItems(
-  orders: ShortagePO[],
-  stageKey: PipelineStageKey,
-  refDate = new Date()
-): RoleTaskItem[] {
-  if (stageKey === 'ops_create') {
-    return getOpsCreateTaskItems(orders, refDate)
-  }
-
-  const allLines = getShortageLines(orders)
-  const scoped =
-    stageKey === 'fulfillment_done'
-      ? filterWeeklyLines(allLines, refDate)
-      : filterDailyLines(allLines, refDate)
-
-  return scoped
-    .filter((l) => lineMatchesPipelineFilter(l, stageKey))
-    .map((l) => ({
-      id: l.id,
-      lineId: l.id,
-      poId: l.po.id,
-      sku: l.sku,
-      title: `${l.po.customerName} · ${l.productName}`,
-      sub: stageDetailSub(l, stageKey),
-      stage: stageKey,
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
-}
-
-export function lineMatchesPipelineFilter(
-  line: ShortagePOLine,
-  filter: PipelineStageFilter
-): boolean {
-  if (!line.isShortage) return false
-  switch (filter) {
-    case 'procurement_advice':
-      return lineNeedsProcurementAdvice(line) && !isProcurementAdviceDone(line)
-    case 'sales_method':
-      return (
-        lineNeedsProcurementAdvice(line) &&
-        isProcurementAdviceDone(line) &&
-        !isSalesMethodDone(line)
-      )
-    case 'procurement':
-      return isProcurementSku(line) && !isProcurementDone(line)
-    case 'fulfillment_done':
-      return !isFulfillmentDone(line) && (isSalesMethodDone(line) || isLogisticsFulfillment(line.fulfillmentMethod))
-  }
-}
-
-export function groupBySku(orders: ShortagePO[]): ProcurementSkuGroup[] {
+export function groupBySku(orders: ShortagePO[], refDate = new Date()): ProcurementSkuGroup[] {
   const map = new Map<string, ProcurementSkuGroup>()
+  const taskLines = filterProcurementTaskLines(getShortageLines(orders), refDate)
 
-  for (const po of orders) {
-    for (const line of po.lines.filter((l) => isLineVisibleToProcurement(l))) {
-      let group = map.get(line.sku)
-      if (!group) {
-        group = {
-          sku: line.sku,
-          productName: line.productName,
-          spec: line.spec,
-          unit: line.unit,
-          totalGap: 0,
-          hotelCount: 0,
-          lineCount: 0,
-          mustOnTimeCount: 0,
-          earliestRequiredDate: po.requiredDeliveryDate,
-          latestRequiredDate: po.requiredDeliveryDate,
-          procurementStatus: 'pending',
-          hotelRows: [],
-        }
-        map.set(line.sku, group)
-      }
+  for (const { po, ...line } of taskLines) {
+    if (isLogisticsFulfillment(line.fulfillmentMethod)) continue
+    if (line.procurementOutcome === 'not_satisfied') continue
+    if (isProcurementDone(line)) continue
+    if (!lineNeedsProcurementAction(line)) continue
 
-      const dr = daysRemaining(po.requiredDeliveryDate)
-      group.totalGap += line.gap
-      group.lineCount += 1
-      if (line.fulfillmentMethod === 'must_on_time') group.mustOnTimeCount += 1
-      if (po.requiredDeliveryDate < group.earliestRequiredDate) {
-        group.earliestRequiredDate = po.requiredDeliveryDate
-      }
-      if (po.requiredDeliveryDate > group.latestRequiredDate) {
-        group.latestRequiredDate = po.requiredDeliveryDate
-      }
-
-      group.hotelRows.push({
-        lineId: line.id,
-        poId: po.id,
-        hotelName: po.customerName,
-        gap: line.gap,
+    let group = map.get(line.sku)
+    if (!group) {
+      group = {
+        sku: line.sku,
+        productName: line.productName,
+        spec: line.spec,
         unit: line.unit,
-        requiredDeliveryDate: po.requiredDeliveryDate,
-        daysRemaining: dr,
-        fulfillmentMethod: line.fulfillmentMethod,
-        salesNote: line.salesNote,
-        supplierName: line.supplierName,
-        amount: line.amount,
-        status: line.status,
-        procurementConfirmed: line.procurementConfirmed,
-      })
+        totalGap: 0,
+        hotelCount: 0,
+        lineCount: 0,
+        earliestRequiredDate: po.requiredDeliveryDate,
+        latestRequiredDate: po.requiredDeliveryDate,
+        procurementStatus: 'pending',
+        hotelRows: [],
+      }
+      map.set(line.sku, group)
     }
+
+    const dr = daysRemaining(po.requiredDeliveryDate)
+    group.totalGap += line.gap
+    group.lineCount += 1
+    if (po.requiredDeliveryDate < group.earliestRequiredDate) {
+      group.earliestRequiredDate = po.requiredDeliveryDate
+    }
+    if (po.requiredDeliveryDate > group.latestRequiredDate) {
+      group.latestRequiredDate = po.requiredDeliveryDate
+    }
+
+    group.hotelRows.push({
+      lineId: line.id,
+      poId: po.id,
+      hotelName: po.customerName,
+      deliveryAddress: po.deliveryAddress,
+      gap: line.gap,
+      unit: line.unit,
+      requiredDeliveryDate: po.requiredDeliveryDate,
+      daysRemaining: dr,
+      fulfillmentMethod: line.fulfillmentMethod,
+      supplierName: line.supplierName,
+      eta: line.eta,
+      amount: line.amount,
+      status: line.status,
+      procurementConfirmed: line.procurementConfirmed,
+      procurementOutcome: line.procurementOutcome,
+    })
   }
 
   const groups = Array.from(map.values()).filter((g) => g.hotelRows.length > 0)
   for (const g of groups) {
-    g.hotelCount = new Set(g.hotelRows.map((r) => r.hotelName)).size
-    const done = g.hotelRows.every((r) => r.procurementConfirmed)
-    const partial = g.hotelRows.some((r) => !!r.supplierName)
-    g.procurementStatus = done ? 'done' : partial ? 'partial' : 'pending'
+    g.hotelCount = new Set(g.hotelRows.map((r) => hotelKey(r.hotelName, r.deliveryAddress))).size
+    g.procurementStatus = g.hotelRows.every((r) => {
+      const l = taskLines.find((x) => x.id === r.lineId)
+      return l ? isProcurementDone(l) : false
+    })
+      ? 'done'
+      : 'pending'
     g.hotelRows.sort((a, b) => a.daysRemaining - b.daysRemaining)
   }
 
-  return groups.sort((a, b) => b.mustOnTimeCount - a.mustOnTimeCount)
+  return groups.sort((a, b) => a.earliestRequiredDate.localeCompare(b.earliestRequiredDate))
 }
 
-export function filterSkuGroupMustOnTime(group: ProcurementSkuGroup): ProcurementSkuGroup | null {
-  const hotelRows = group.hotelRows.filter((r) => r.fulfillmentMethod === 'must_on_time')
-  if (hotelRows.length === 0) return null
-  const dates = hotelRows.map((r) => r.requiredDeliveryDate)
-  return {
-    ...group,
-    hotelRows,
-    totalGap: hotelRows.reduce((sum, r) => sum + r.gap, 0),
-    lineCount: hotelRows.length,
-    mustOnTimeCount: hotelRows.length,
-    hotelCount: new Set(hotelRows.map((r) => r.hotelName)).size,
-    earliestRequiredDate: dates.reduce((a, b) => (a < b ? a : b)),
-    latestRequiredDate: dates.reduce((a, b) => (a > b ? a : b)),
-  }
-}
-
-export function groupByHotel(orders: ShortagePO[]): SalesHotelGroup[] {
+export function groupByHotel(orders: ShortagePO[], refDate = new Date()): SalesHotelGroup[] {
   const map = new Map<string, SalesHotelGroup>()
 
   for (const po of orders) {
-    const shortageLines = po.lines.filter((l) => l.isShortage)
-    if (shortageLines.length === 0) continue
-
-    const key = po.customerName
-    let group = map.get(key)
-    if (!group) {
-      group = {
-        hotelKey: key,
-        hotelName: po.customerName,
-        shortageLineCount: 0,
-        completedCount: 0,
-        completionRate: 0,
-        isComplete: false,
-        nearestDeliveryDate: po.requiredDeliveryDate,
-        pendingProducts: [],
-        poIds: [],
-        lines: [],
+    if (!isDeliveryToday(po.requiredDeliveryDate, refDate)) continue
+    for (const line of po.lines.filter(isSalesTrackedShortageLine)) {
+      const key = hotelKey(po.customerName, po.deliveryAddress)
+      let group = map.get(key)
+      if (!group) {
+        group = {
+          hotelKey: key,
+          hotelName: po.customerName,
+          deliveryAddress: po.deliveryAddress,
+          shortageLineCount: 0,
+          nearestDeliveryDate: po.requiredDeliveryDate,
+          poIds: [],
+          lines: [],
+        }
+        map.set(key, group)
       }
-      map.set(key, group)
-    }
 
-    if (po.requiredDeliveryDate < group.nearestDeliveryDate) {
-      group.nearestDeliveryDate = po.requiredDeliveryDate
-    }
-    if (!group.poIds.includes(po.id)) group.poIds.push(po.id)
+      if (po.requiredDeliveryDate < group.nearestDeliveryDate) {
+        group.nearestDeliveryDate = po.requiredDeliveryDate
+      }
+      if (!group.poIds.includes(po.id)) group.poIds.push(po.id)
 
-    for (const line of shortageLines) {
       group.shortageLineCount += 1
-      if (isFulfillmentDone(line)) group.completedCount += 1
-      if (line.fulfillmentMethod === 'pending') {
-        group.pendingProducts.push(line.productName)
-      }
       group.lines.push({
         lineId: line.id,
         poId: po.id,
@@ -717,93 +316,184 @@ export function groupByHotel(orders: ShortagePO[]): SalesHotelGroup[] {
         unit: line.unit,
         quantity: line.quantity,
         requiredDeliveryDate: po.requiredDeliveryDate,
-        opsAdvice: line.opsAdvice,
         fulfillmentMethod: line.fulfillmentMethod,
-        salesNote: line.salesNote,
+        eta: line.eta,
         status: line.status,
+        procurementOutcome: line.procurementOutcome,
       })
     }
   }
 
   const groups = Array.from(map.values())
   for (const g of groups) {
-    g.completionRate =
-      g.shortageLineCount === 0 ? 0 : Math.round((g.completedCount / g.shortageLineCount) * 100)
-    g.isComplete = g.completedCount === g.shortageLineCount && g.shortageLineCount > 0
-    g.pendingProducts = [...new Set(g.pendingProducts)]
-    g.lines.sort((a, b) => {
-      if (a.fulfillmentMethod === 'pending' && b.fulfillmentMethod !== 'pending') return -1
-      if (b.fulfillmentMethod === 'pending' && a.fulfillmentMethod !== 'pending') return 1
-      return a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate)
-    })
+    g.lines.sort((a, b) => a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate))
   }
-
-  return groups.sort((a, b) => a.completionRate - b.completionRate)
+  return groups.sort((a, b) => a.nearestDeliveryDate.localeCompare(b.nearestDeliveryDate))
 }
 
-export function getTasksForRole(
-  orders: ShortagePO[],
-  role: WorkbenchRole,
-  pipelineFilter?: PipelineStageFilter | null
-): RoleTaskItem[] {
-  const lines = getShortageLines(orders)
-  const matchFilter = (line: ShortagePOLine) =>
-    !pipelineFilter || lineMatchesPipelineFilter(line, pipelineFilter)
+function salesNotifiedBatchKey(line: ShortagePOLine): string {
+  const at = line.salesProcurementNotifiedAt?.trim()
+  return at ? `${line.sku}::${at}` : `${line.sku}::legacy`
+}
 
-  if (role === 'ops') {
-    return []
+function salesNotifiedSortKey(line: ShortagePOLine): string {
+  return line.salesProcurementNotifiedAt?.trim() || '1970-01-01T00:00:00.000Z'
+}
+
+/** 销售首页：采购已更新（加急/延期）的通知，按品项 + 推送批次聚合 */
+export function groupSalesProcurementUpdates(
+  orders: ShortagePO[],
+  refDate = new Date()
+): SalesSkuUpdateBatch[] {
+  const batchMap = new Map<string, SalesSkuUpdateBatch>()
+
+  for (const po of orders) {
+    if (!isDeliveryToday(po.requiredDeliveryDate, refDate)) continue
+    for (const line of po.lines) {
+      if (!isSalesDeferLine(line) && !isSalesUrgentLine(line)) continue
+
+      const batchKey = salesNotifiedBatchKey(line)
+      let batch = batchMap.get(batchKey)
+      if (!batch) {
+        batch = {
+          batchKey,
+          sku: line.sku,
+          productName: line.productName,
+          spec: line.spec,
+          notifiedAt: salesNotifiedSortKey(line),
+          hotelCount: 0,
+          lineCount: 0,
+          hotels: [],
+        }
+        batchMap.set(batchKey, batch)
+      }
+
+      if (salesNotifiedSortKey(line) > batch.notifiedAt) {
+        batch.notifiedAt = salesNotifiedSortKey(line)
+      }
+
+      batch.lineCount += 1
+      batch.hotels.push({
+        lineId: line.id,
+        poId: po.id,
+        hotelName: po.customerName,
+        deliveryAddress: po.deliveryAddress,
+        gap: line.gap,
+        unit: line.unit,
+        requiredDeliveryDate: po.requiredDeliveryDate,
+        fulfillmentMethod: line.fulfillmentMethod,
+        procurementOutcome: line.procurementOutcome,
+        eta: line.eta,
+      })
+    }
   }
 
-  if (role === 'sales') {
-    return lines
-      .filter(
-        (l) =>
-          lineNeedsProcurementAdvice(l) &&
-          isProcurementAdviceDone(l) &&
-          !isSalesMethodDone(l) &&
-          matchFilter(l)
-      )
+  const batches = Array.from(batchMap.values())
+  for (const batch of batches) {
+    batch.hotelCount = new Set(
+      batch.hotels.map((h) => hotelKey(h.hotelName, h.deliveryAddress))
+    ).size
+    batch.hotels.sort((a, b) => a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate))
+  }
+
+  return batches.sort((a, b) => b.notifiedAt.localeCompare(a.notifiedAt))
+}
+
+/** 一次采购更新通知内按酒店地址分组（轮播每页一家酒店） */
+export function groupSalesUpdateBatchByHotel(batch: SalesSkuUpdateBatch): SalesSkuUpdateHotelGroup[] {
+  const map = new Map<string, SalesSkuUpdateHotelGroup>()
+  for (const row of batch.hotels) {
+    const key = hotelKey(row.hotelName, row.deliveryAddress)
+    let group = map.get(key)
+    if (!group) {
+      group = { hotelKey: key, hotelName: row.hotelName, deliveryAddress: row.deliveryAddress, rows: [] }
+      map.set(key, group)
+    }
+    group.rows.push(row)
+  }
+  const groups = Array.from(map.values())
+  for (const g of groups) {
+    g.rows.sort((a, b) => a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate))
+  }
+  return groups.sort((a, b) =>
+    (a.rows[0]?.requiredDeliveryDate ?? '').localeCompare(b.rows[0]?.requiredDeliveryDate ?? '')
+  )
+}
+
+export function getProcurementTasks(orders: ShortagePO[], refDate = new Date()): RoleTaskItem[] {
+  const lines = filterDailyLines(getShortageLines(orders), refDate).filter(lineNeedsProcurementAction)
+
+  return lines
+    .map((l) => ({
+      id: l.id,
+      lineId: l.id,
+      poId: l.po.id,
+      sku: l.sku,
+      title: `${l.productName}`,
+      sub: `${l.po.customerName} · 缺 ${l.gap}${l.unit} · 交期 ${l.po.requiredDeliveryDate.slice(5)}`,
+      stage: 'procurement' as const,
+      customerName: l.po.customerName,
+      deliveryAddress: l.po.deliveryAddress,
+      productName: l.productName,
+      requiredDeliveryDate: l.po.requiredDeliveryDate,
+      gap: l.gap,
+      unit: l.unit,
+    }))
+    .sort((a, b) => (a.requiredDeliveryDate ?? '').localeCompare(b.requiredDeliveryDate ?? ''))
+}
+
+function salesLineChannelLabel(line: {
+  procurementOutcome: ShortagePOLine['procurementOutcome']
+  fulfillmentMethod: ShortagePOLine['fulfillmentMethod']
+}): string {
+  if (line.procurementOutcome === 'not_satisfied' || line.fulfillmentMethod === 'defer') {
+    return '延期'
+  }
+  return '加急'
+}
+
+export function getSalesDeferNotifications(orders: ShortagePO[]): RoleTaskItem[] {
+  return groupByHotel(orders).flatMap((g) =>
+    g.lines.map((line) => ({
+      id: line.lineId,
+      lineId: line.lineId,
+      poId: line.poId,
+      sku: line.sku,
+      title: `${g.hotelName}`,
+      sub: `${salesLineChannelLabel(line)} · ${line.productName} · 缺 ${line.gap}${line.unit}${line.eta ? ` · 预计 ${line.eta.slice(5)}` : ''}`,
+      stage: 'sales_defer' as const,
+      customerName: g.hotelName,
+      deliveryAddress: g.deliveryAddress,
+      productName: line.productName,
+      requiredDeliveryDate: line.requiredDeliveryDate,
+      gap: line.gap,
+      unit: line.unit,
+    }))
+  )
+}
+
+export function getTasksForRole(orders: ShortagePO[], role: WorkbenchRole): RoleTaskItem[] {
+  if (role === 'ops') {
+    return filterDailyLines(getShortageLines(orders))
+      .filter((l) => !isFulfillmentDone(l))
       .map((l) => ({
         id: l.id,
         lineId: l.id,
         poId: l.po.id,
         sku: l.sku,
         title: `${l.po.customerName} · ${l.productName}`,
-        sub: l.opsAdvice ? `建议：${l.opsAdvice.slice(0, 40)}…` : '待确认履约方式',
-        stage: 'sales_method' as const,
+        sub: `缺 ${l.gap}${l.unit} · ${l.status}`,
+        stage: 'ops_create' as const,
       }))
   }
-
-  const adviceTasks = lines
-    .filter(
-      (l) => lineNeedsProcurementAdvice(l) && !isProcurementAdviceDone(l) && matchFilter(l)
-    )
-    .map((l) => ({
-      id: l.id,
-      lineId: l.id,
-      poId: l.po.id,
-      sku: l.sku,
-      title: `${l.po.customerName} · ${l.productName}`,
-      sub: `还缺 ${l.gap}${l.unit} · 测算履约建议`,
-      stage: 'procurement_advice' as const,
-    }))
-
-  const sourceTasks = lines
-    .filter((l) => isLineVisibleToProcurement(l) && !isProcurementDone(l) && matchFilter(l))
-    .map((l) => ({
-      id: l.id,
-      lineId: l.id,
-      poId: l.po.id,
-      sku: l.sku,
-      title: `${l.productName} · ${l.po.customerName}`,
-      sub: `还缺 ${l.gap}${l.unit} · 当期到货寻源`,
-      stage: 'procurement' as const,
-    }))
-
-  return [...adviceTasks, ...sourceTasks]
+  if (role === 'sales') return getSalesDeferNotifications(orders)
+  return getProcurementTasks(orders)
 }
 
-/** 加载/同步时应用后台直发、正常补货算路 */
+export function getTasksForFlowKind(orders: ShortagePO[], _kind: 'procurement'): RoleTaskItem[] {
+  return getProcurementTasks(orders)
+}
+
 export function applyBackendLogisticsRouting(orders: ShortagePO[]): ShortagePO[] {
   return orders.map((po) => ({
     ...po,
@@ -814,7 +504,6 @@ export function applyBackendLogisticsRouting(orders: ShortagePO[]): ShortagePO[]
       return recomputeLineStatus({
         ...line,
         fulfillmentMethod: auto,
-        opsAdvice: '',
         salesNote: '',
         supplierName: '',
         selectedSupplierId: '',
@@ -824,7 +513,7 @@ export function applyBackendLogisticsRouting(orders: ShortagePO[]): ShortagePO[]
         recommendedSuppliers: [],
         salesOutboundType: 'order_direct',
         salesOutboundNo: line.salesOutboundNo || `SO-D-AUTO-${line.id.slice(-4)}`,
-        expectedFulfillQty: line.gap,
+        procurementOutcome: 'pending',
       })
     }),
   }))
@@ -832,38 +521,31 @@ export function applyBackendLogisticsRouting(orders: ShortagePO[]): ShortagePO[]
 
 export function ensureLineSuppliers(line: ShortagePOLine): ShortagePOLine {
   if (line.recommendedSuppliers.length > 0) return line
-  if (line.fulfillmentMethod !== 'must_on_time') return line
-  return { ...line, recommendedSuppliers: getRecommendedSuppliers(line.sku) }
+  if (isLogisticsFulfillment(line.fulfillmentMethod)) return line
+  const primary = getPrimarySupplier(line.sku)
+  return { ...line, recommendedSuppliers: [primary] }
 }
 
 const DONE_METHOD_KEYS: FulfillmentMethod[] = [
   'direct_ship',
   'normal_replenishment',
   'defer',
-  'must_on_time',
+  'satisfied',
 ]
 
 export function getOpsCreateSummary(orders: ShortagePO[], refDate = new Date()): OpsCreateSummary {
   const allLines = getShortageLines(orders)
   const dailyLines = filterDailyLines(allLines, refDate)
   const dailyPoIds = new Set(dailyLines.map((l) => l.po.id))
-  const parsedPoIds = new Set(
-    dailyLines.filter((l) => l.status !== 'new' || l.fulfillmentMethod !== 'pending').map((l) => l.po.id)
-  )
 
   return {
     poSynced: orders.filter((po) => po.lines.some((l) => l.isShortage)).length,
-    poParsed: parsedPoIds.size > 0 ? parsedPoIds.size : dailyPoIds.size,
+    poParsed: dailyPoIds.size,
     shortageLineCount: dailyLines.length,
     skuCount: uniqueShortageSkus(dailyLines).length,
-    hotelCount: new Set(dailyLines.map((l) => l.po.customerName)).size,
+    hotelCount: new Set(dailyLines.map((l) => hotelKey(l.po.customerName, l.po.deliveryAddress))).size,
     totalGapQty: dailyLines.reduce((s, l) => s + l.gap, 0),
   }
-}
-
-/** 履约完成分布图例：按品项（缺货行）计数 */
-export function formatSkuMixCount(count: number): string {
-  return `${count}个品`
 }
 
 export function getFulfillmentDoneSummary(
@@ -888,23 +570,277 @@ export function getFulfillmentDoneSummary(
   }))
 
   return {
-    hotelCount: new Set(completed.map((l) => l.po.customerName)).size,
+    hotelCount: new Set(completed.map((l) => hotelKey(l.po.customerName, l.po.deliveryAddress))).size,
     orderCount: new Set(completed.map((l) => l.po.id)).size,
     completedLineCount: completed.length,
     methodMix,
   }
 }
 
-export function getTasksForFlowKind(orders: ShortagePO[], kind: TaskFlowKind): RoleTaskItem[] {
-  if (kind === 'sales_method') {
-    return getTasksForRole(orders, 'sales', 'sales_method')
-  }
-  const all = getTasksForRole(orders, 'procurement')
-  return all.filter((t) => t.stage === kind)
+export function isProcurementSubmittedLine(line: ShortagePOLine): boolean {
+  return (
+    line.procurementOutcome === 'satisfied' &&
+    (line.oaApprovalStatus === 'pending' ||
+      line.oaApprovalStatus === 'approved' ||
+      line.procurementConfirmed)
+  )
 }
 
-export const TASK_FLOW_TITLES: Record<TaskFlowKind, string> = {
-  sales_method: '上传缺货履约方式',
-  procurement_advice: '确认缺货履约建议',
-  procurement: '执行缺货寻源',
+function toKpiSkuPoRow(line: ShortagePOLine, po: ShortagePO): KpiSkuPoRow {
+  return {
+    lineId: line.id,
+    poId: po.id,
+    hotelName: po.customerName,
+    deliveryAddress: po.deliveryAddress,
+    gap: line.gap,
+    unit: line.unit,
+    requiredDeliveryDate: po.requiredDeliveryDate,
+    status: line.status,
+    procurementOutcome: line.procurementOutcome,
+    fulfillmentMethod: line.fulfillmentMethod,
+    supplierName: line.supplierName,
+    eta: line.eta,
+    oaApprovalStatus: line.oaApprovalStatus,
+  }
+}
+
+function buildKpiSkuGroups(
+  lines: Array<ShortagePOLine & { po: ShortagePO }>
+): KpiSkuGroup[] {
+  const map = new Map<string, KpiSkuGroup>()
+
+  for (const { po, ...line } of lines) {
+    let group = map.get(line.sku)
+    if (!group) {
+      group = {
+        sku: line.sku,
+        productName: line.productName,
+        spec: line.spec,
+        unit: line.unit,
+        lineCount: 0,
+        totalGap: 0,
+        poRows: [],
+      }
+      map.set(line.sku, group)
+    }
+    group.lineCount += 1
+    group.totalGap += line.gap
+    group.poRows.push(toKpiSkuPoRow(line, po))
+  }
+
+  for (const group of map.values()) {
+    group.poRows.sort((a, b) => a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate))
+    const oaRow = group.poRows.find((r) => r.oaApprovalStatus !== 'none')
+    if (oaRow) group.oaApprovalStatus = oaRow.oaApprovalStatus
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    a.productName.localeCompare(b.productName, 'zh-CN')
+  )
+}
+
+export function getTodayShortageDetailGroups(
+  orders: ShortagePO[],
+  refDate = new Date(),
+  role?: WorkbenchRole
+): KpiSkuGroup[] {
+  return buildKpiSkuGroups(
+    filterLinesForRole(filterDailyLines(getShortageLines(orders), refDate), role)
+  )
+}
+
+export function getProcurementSubmittedDetailGroups(
+  orders: ShortagePO[],
+  refDate = new Date(),
+  role?: WorkbenchRole
+): KpiSkuGroup[] {
+  return buildKpiSkuGroups(
+    filterLinesForRole(
+      filterDailyLines(getShortageLines(orders), refDate).filter(isProcurementSubmittedLine),
+      role
+    )
+  )
+}
+
+export function isPoLogisticsClosed(po: ShortagePO, role?: WorkbenchRole): boolean {
+  const shortageLines = po.lines.filter((l) => l.isShortage)
+  if (shortageLines.length === 0) return false
+  if (role === 'sales') {
+    const tracked = shortageLines.filter(isSalesTrackedShortageLine)
+    return tracked.length > 0 && tracked.every(isFulfillmentDone)
+  }
+  return shortageLines.every(isFulfillmentDone)
+}
+
+function shortageLinesForPoDetail(po: ShortagePO, role?: WorkbenchRole): ShortagePOLine[] {
+  const lines = po.lines.filter((l) => l.isShortage)
+  if (role === 'sales') return lines.filter(isSalesTrackedShortageLine)
+  return lines
+}
+
+function resolvePoTrackingNo(po: ShortagePO): string {
+  for (const line of po.lines) {
+    if (line.salesOutboundNo) return line.salesOutboundNo
+    if (line.opsPoNumber) return line.opsPoNumber
+  }
+  return ''
+}
+
+export function getLogisticsClosedDetailGroups(
+  orders: ShortagePO[],
+  refDate = new Date(),
+  role?: WorkbenchRole
+): KpiClosedPoGroup[] {
+  return orders
+    .filter((po) => isDeliveryToday(po.requiredDeliveryDate, refDate) && isPoLogisticsClosed(po, role))
+    .map((po) => ({
+      poId: po.id,
+      customerName: po.customerName,
+      deliveryAddress: po.deliveryAddress,
+      requiredDeliveryDate: po.requiredDeliveryDate,
+      trackingNo: resolvePoTrackingNo(po),
+      lines: shortageLinesForPoDetail(po, role).map((line) => ({
+          lineId: line.id,
+          sku: line.sku,
+          productName: line.productName,
+          spec: line.spec,
+          gap: line.gap,
+          unit: line.unit,
+          signoffStatus: line.signoffStatus,
+          signoffAt: line.signoffAt,
+        })),
+    }))
+    .sort((a, b) => a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate))
+}
+
+export function countProcurementSubmitted(
+  orders: ShortagePO[],
+  refDate = new Date(),
+  role?: WorkbenchRole
+): number {
+  return getProcurementSubmittedDetailGroups(orders, refDate, role).length
+}
+
+export function countLogisticsClosed(
+  orders: ShortagePO[],
+  refDate = new Date(),
+  role?: WorkbenchRole
+): number {
+  return getLogisticsClosedDetailGroups(orders, refDate, role).length
+}
+
+export function countTodayShortageLines(
+  orders: ShortagePO[],
+  refDate = new Date(),
+  role?: WorkbenchRole
+): number {
+  return getTodayShortageDetailGroups(orders, refDate, role).length
+}
+
+export function getPendingProcurementGroups(orders: ShortagePO[], refDate = new Date()): ProcurementSkuGroup[] {
+  return groupBySku(orders, refDate)
+}
+
+export type ProcurementListSort = 'delivery' | 'oa'
+
+export type ProcurementSkuOaBucket = 'approved' | 'pending' | 'rejected' | 'none'
+
+/** OA 排序：未提交 → 已驳回 → 审批中 → 已通过 */
+const OA_BUCKET_RANK: Record<ProcurementSkuOaBucket, number> = {
+  none: 0,
+  rejected: 1,
+  pending: 2,
+  approved: 3,
+}
+
+function skuOaStatuses(group: ProcurementSkuGroup, orders: ShortagePO[]): OaApprovalStatus[] {
+  return getShortageLines(orders)
+    .filter((l) => l.sku === group.sku && isProcurementTaskHorizon(l.po.requiredDeliveryDate))
+    .map((l) => l.oaApprovalStatus)
+}
+
+/** 品项任务清单 OA 分组：已通过 → 审批中 → 已驳回 */
+export function getProcurementSkuOaBucket(
+  group: ProcurementSkuGroup,
+  orders: ShortagePO[]
+): ProcurementSkuOaBucket {
+  const statuses = skuOaStatuses(group, orders).filter((s) => s !== 'none')
+  if (statuses.length === 0) return 'none'
+  if (statuses.some((s) => s === 'pending')) return 'pending'
+  if (statuses.every((s) => s === 'approved')) return 'approved'
+  if (statuses.some((s) => s === 'rejected')) return 'rejected'
+  if (statuses.some((s) => s === 'approved')) return 'approved'
+  return 'none'
+}
+
+export function getProcurementSkuOaLabel(bucket: ProcurementSkuOaBucket): string {
+  switch (bucket) {
+    case 'approved':
+      return OA_APPROVAL_STATUS_LABEL.approved
+    case 'pending':
+      return OA_APPROVAL_STATUS_LABEL.pending
+    case 'rejected':
+      return 'OA已驳回，待修改'
+    default:
+      return '新任务，还未提交'
+  }
+}
+
+function procurementSkuOaRank(group: ProcurementSkuGroup, orders: ShortagePO[]): number {
+  return OA_BUCKET_RANK[getProcurementSkuOaBucket(group, orders)]
+}
+
+export function sortProcurementSkuGroups(
+  groups: ProcurementSkuGroup[],
+  orders: ShortagePO[],
+  sort: ProcurementListSort
+): ProcurementSkuGroup[] {
+  const copy = [...groups]
+  if (sort === 'oa') {
+    return copy.sort((a, b) => {
+      const oaDiff = procurementSkuOaRank(a, orders) - procurementSkuOaRank(b, orders)
+      if (oaDiff !== 0) return oaDiff
+      return a.earliestRequiredDate.localeCompare(b.earliestRequiredDate)
+    })
+  }
+  return copy.sort((a, b) => a.earliestRequiredDate.localeCompare(b.earliestRequiredDate))
+}
+
+export function getProcurementSkuGroup(
+  orders: ShortagePO[],
+  sku: string,
+  refDate = new Date()
+): ProcurementSkuGroup | null {
+  return getPendingProcurementGroups(orders, refDate).find((g) => g.sku === sku) ?? null
+}
+
+/** 按品聚合：取各品下所有 PO 的最早 DDL，再选出全局最早（可并列多个品） */
+export function getMostUrgentProcurementSkuGroups(
+  orders: ShortagePO[],
+  refDate = new Date()
+): ProcurementSkuGroup[] {
+  const groups = getPendingProcurementGroups(orders, refDate)
+  if (groups.length === 0) return []
+
+  let earliest = groups[0].earliestRequiredDate
+  for (const g of groups) {
+    if (g.earliestRequiredDate < earliest) earliest = g.earliestRequiredDate
+  }
+  return groups.filter((g) => g.earliestRequiredDate === earliest)
+}
+
+export function formatMostUrgentProcurementReply(groups: ProcurementSkuGroup[]): string {
+  if (groups.length === 0) return '采购待办已清空。'
+
+  const dateLabel = groups[0].earliestRequiredDate.slice(5)
+  if (groups.length === 1) {
+    const g = groups[0]
+    return `最紧急的是「${g.productName}」：该品下最早 PO 交期 ${dateLabel}，共缺 ${g.totalGap}${g.unit}（${g.lineCount} 个 PO）。`
+  }
+
+  const lines = groups.map(
+    (g, i) =>
+      `${i + 1}. ${g.productName}（${g.spec} · 最早交期 ${g.earliestRequiredDate.slice(5)} · 共缺 ${g.totalGap}${g.unit} · ${g.lineCount} 个 PO）`
+  )
+  return `最紧急交期 ${dateLabel}，以下 ${groups.length} 个品并列：\n${lines.join('\n')}`
 }

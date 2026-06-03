@@ -6,7 +6,6 @@ import {
   getMobileTaskListHotels,
   getMobileTaskListItems,
 } from '../../../utils/mobileAgentSummary'
-import { startMobileTaskInChat } from '../../../utils/mobileAgentDialogue'
 
 export function MobileTaskListSheet() {
   const open = useShortageStore((s) => s.mobileTaskListOpen)
@@ -26,9 +25,8 @@ export function MobileTaskListSheet() {
 
   if (!open) return null
 
-  const pickTask = (task: RoleTaskItem) => {
+  const pickTask = (_task: RoleTaskItem) => {
     close()
-    startMobileTaskInChat(task)
   }
 
   return (

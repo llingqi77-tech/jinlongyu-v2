@@ -1,78 +1,17 @@
-// LLM integration point: replace rule-based parsers with model tool calls when wired.
-
-import type {
-  FulfillmentMethod,
-  MobileHomeKpis,
-  MobileKpiDimension,
-  RoleTaskItem,
-  ShortagePO,
-  WorkbenchRole,
-} from '../types/shortage'
-import { FULFILLMENT_METHOD_LABEL, PIPELINE_STAGE_SHORT } from '../constants/shortageLabels'
-import { lineNeedsProcurementAdvice } from './fulfillmentMethodRules'
+import type { MobileHomeKpis, RoleTaskItem, ShortagePO, WorkbenchRole } from '../types/shortage'
 import {
+  countLogisticsClosed,
+  countProcurementSubmitted,
+  countTodayShortageLines,
   daysRemaining,
   getShortageLines,
   getTasksForRole,
   isDeliveryToday,
   isFulfillmentDone,
-  isProcurementAdviceDone,
-  isProcurementDone,
-  isSalesMethodDone,
-  isLineVisibleToProcurement,
+  isSalesTrackedShortageLine,
 } from './shortageAggregations'
 
-export type { MobileHomeKpis, MobileKpiDimension }
-
-export const MOBILE_KPI_DIMENSION_LABEL: Record<MobileKpiDimension, string> = {
-  sku: '品（SKU）',
-  hotel: '酒店',
-  po: 'PO 单',
-}
-
-export const MOBILE_KPI_DIMENSION_OPTIONS: MobileKpiDimension[] = ['sku', 'hotel', 'po']
-
-function countDistinct<T>(items: T[], key: (item: T) => string | undefined): number {
-  const set = new Set<string>()
-  for (const item of items) {
-    const v = key(item)
-    if (v) set.add(v)
-  }
-  return set.size
-}
-
-type TodayLine = ReturnType<typeof getTodayShortageLines>[number]
-
-function countByDimension(lines: TodayLine[], dimension: MobileKpiDimension): number {
-  if (dimension === 'sku') return countDistinct(lines, (l) => l.sku)
-  if (dimension === 'hotel') return countDistinct(lines, (l) => l.po.customerName)
-  return countDistinct(lines, (l) => l.po.id)
-}
-
-function countPendingByDimension(tasks: RoleTaskItem[], dimension: MobileKpiDimension): number {
-  if (dimension === 'sku') return countDistinct(tasks, (t) => t.sku)
-  if (dimension === 'hotel') return countDistinct(tasks, (t) => t.customerName)
-  return countDistinct(tasks, (t) => t.poId)
-}
-
-export function getMobileKpiShortageLabel(dimension: MobileKpiDimension): string {
-  switch (dimension) {
-    case 'sku':
-      return '缺货品'
-    case 'hotel':
-      return '缺货酒店'
-    case 'po':
-      return '缺货 PO'
-  }
-}
-
-const STAGE_LABEL: Record<string, string> = {
-  procurement_advice: PIPELINE_STAGE_SHORT.procurement_advice,
-  sales_method: PIPELINE_STAGE_SHORT.sales_method,
-  procurement: PIPELINE_STAGE_SHORT.procurement,
-  ops_create: '待同步',
-  fulfillment_done: '履约完成',
-}
+export type { MobileHomeKpis }
 
 function urgencyScore(requiredDate: string): number {
   const days = daysRemaining(requiredDate)
@@ -91,50 +30,18 @@ function enrichTask(task: RoleTaskItem, orders: ShortagePO[]): RoleTaskItem {
   return {
     ...task,
     customerName: line.po.customerName,
+    deliveryAddress: line.po.deliveryAddress,
     productName: line.productName,
     requiredDeliveryDate: delivery,
     gap: line.gap,
     unit: line.unit,
-    stageLabel: STAGE_LABEL[task.stage] ?? task.stage,
     urgencyScore: urgencyScore(delivery),
-    sub: `交期 ${delivery.slice(5)}（${days} 天）· 缺 ${line.gap}${line.unit} · ${STAGE_LABEL[task.stage] ?? task.stage}`,
+    sub: `交期 ${delivery.slice(5)}（${days} 天）· 缺 ${line.gap}${line.unit}`,
   }
 }
 
-/** 运营：全链路未完成缺货行（只读监控清单） */
-function getOpsMonitorTasks(orders: ShortagePO[]): RoleTaskItem[] {
-  const lines = getShortageLines(orders).filter((l) => !isFulfillmentDone(l))
-
-  return lines.map((l) => {
-    let stage: RoleTaskItem['stage'] = 'ops_create'
-    if (!isProcurementAdviceDone(l) && lineNeedsProcurementAdvice(l)) {
-      stage = 'procurement_advice'
-    } else if (!isSalesMethodDone(l) && lineNeedsProcurementAdvice(l)) {
-      stage = 'sales_method'
-    } else if (isLineVisibleToProcurement(l) && !isProcurementDone(l)) {
-      stage = 'procurement'
-    } else if (isFulfillmentDone(l)) {
-      stage = 'fulfillment_done'
-    }
-
-    const task: RoleTaskItem = {
-      id: l.id,
-      lineId: l.id,
-      poId: l.po.id,
-      sku: l.sku,
-      title: `${l.po.customerName} · ${l.productName}`,
-      sub: '',
-      stage,
-    }
-    return enrichTask(task, orders)
-  })
-}
-
 export function getRoleTasksSorted(orders: ShortagePO[], role: WorkbenchRole): RoleTaskItem[] {
-  const base =
-    role === 'ops' ? getOpsMonitorTasks(orders) : getTasksForRole(orders, role)
-
-  return base
+  return getTasksForRole(orders, role)
     .map((t) => enrichTask(t, orders))
     .sort((a, b) => {
       const dateA = a.requiredDeliveryDate ?? '9999-12-31'
@@ -144,26 +51,18 @@ export function getRoleTasksSorted(orders: ShortagePO[], role: WorkbenchRole): R
     })
 }
 
-function getTodayShortageLines(orders: ShortagePO[]) {
-  return getShortageLines(orders).filter((l) => isDeliveryToday(l.po.requiredDeliveryDate))
+function getTodayShortageLines(orders: ShortagePO[], role: WorkbenchRole) {
+  const daily = getShortageLines(orders).filter((l) => isDeliveryToday(l.po.requiredDeliveryDate))
+  if (role !== 'sales') return daily
+  return daily.filter((l) => isSalesTrackedShortageLine(l))
 }
 
-export function getMobileHomeKpis(
-  orders: ShortagePO[],
-  role: WorkbenchRole,
-  dimension: MobileKpiDimension = 'sku'
-): MobileHomeKpis {
-  const daily = getTodayShortageLines(orders)
-  const tasks = getRoleTasksSorted(orders, role)
-  const fulfilledLines = daily.filter((l) => isFulfillmentDone(l))
-  const skus = new Set(daily.map((l) => l.sku))
-
+export function getMobileHomeKpis(orders: ShortagePO[], role: WorkbenchRole): MobileHomeKpis {
+  const daily = getTodayShortageLines(orders, role)
   return {
-    dimension,
-    fulfilledCount: countByDimension(fulfilledLines, dimension),
-    pendingTaskCount: countPendingByDimension(tasks, dimension),
-    shortageLineCount: countByDimension(daily, dimension),
-    shortageSkuCount: skus.size,
+    shortageLineCount: countTodayShortageLines(orders, new Date(), role),
+    procurementSubmittedCount: countProcurementSubmitted(orders, new Date(), role),
+    logisticsClosedCount: countLogisticsClosed(orders, new Date(), role),
     totalGap: daily.reduce((s, l) => s + l.gap, 0),
   }
 }
@@ -171,11 +70,11 @@ export function getMobileHomeKpis(
 export function getRoleWelcomeLine(role: WorkbenchRole): string {
   switch (role) {
     case 'sales':
-      return '嗨，我是你的完美履约助手。今天你的任务数据和清单如下，你想先完成哪一个？'
+      return '以下按酒店展示加急、延期缺货，多家客户时左右滑动切换。'
     case 'procurement':
-      return '你好，我是采购履约助手。以下是需要你处理的缺货任务，按客户交期紧急程度排序。'
+      return '点击品项进入处理页，各 PO 可分别选择加急/延期、供应商与配送方式。'
     case 'ops':
-      return '你好，我是运营履约助手。以下是今日缺货与各环节待办概览，你可以随时向我提问。'
+      return '以下是今日缺货处理概览，可查看数据大盘了解详情。'
   }
 }
 
@@ -193,156 +92,25 @@ export function findTaskByUserText(
   }
 
   const lower = t.toLowerCase()
-  const hit = tasks.find((task) => {
-    const title = task.title.toLowerCase()
-    const customer = (task.customerName ?? '').toLowerCase()
-    const product = (task.productName ?? '').toLowerCase()
-    const sku = task.sku.toLowerCase()
-    return (
-      title.includes(lower) ||
-      lower.includes(customer) ||
-      lower.includes(product) ||
-      (sku.length > 3 && lower.includes(sku)) ||
-      [...customer, ...product].some((part) => part.length >= 2 && lower.includes(part))
-    )
-  })
-  return hit ?? null
+  return (
+    tasks.find((task) => {
+      const title = task.title.toLowerCase()
+      const customer = (task.customerName ?? '').toLowerCase()
+      const product = (task.productName ?? '').toLowerCase()
+      return (
+        title.includes(lower) ||
+        customer.includes(lower) ||
+        product.includes(lower) ||
+        lower.includes(title)
+      )
+    }) ?? null
+  )
 }
 
-export interface ParsedFulfillment {
-  method: FulfillmentMethod
-  note: string
-  label: string
-}
-
-export function parseSalesFulfillmentFromText(text: string): ParsedFulfillment | null {
-  const t = text.trim()
-  if (!t) return null
-
-  if (/顺延|延期|下周|往后|推迟/.test(t)) {
-    return { method: 'defer', note: t.slice(0, 120), label: FULFILLMENT_METHOD_LABEL.defer }
-  }
-  if (/当期|加急|按时|必须到货|紧急/.test(t)) {
-    return { method: 'must_on_time', note: t.slice(0, 120), label: FULFILLMENT_METHOD_LABEL.must_on_time }
-  }
-  if (/直发/.test(t)) {
-    return {
-      method: 'direct_ship',
-      note: t.slice(0, 120),
-      label: FULFILLMENT_METHOD_LABEL.direct_ship,
-    }
-  }
-  if (/补货|在途|正常补/.test(t)) {
-    return {
-      method: 'normal_replenishment',
-      note: t.slice(0, 120),
-      label: FULFILLMENT_METHOD_LABEL.normal_replenishment,
-    }
-  }
-  if (/换品|平替|替代/.test(t)) {
-    return {
-      method: 'substitute',
-      note: t.slice(0, 120),
-      label: FULFILLMENT_METHOD_LABEL.substitute,
-    }
-  }
-  if (/确认|同意|可以|好的|就按/.test(t)) {
-    return { method: 'defer', note: t.slice(0, 120), label: FULFILLMENT_METHOD_LABEL.defer }
-  }
-
-  return null
-}
-
-export interface ParsedProcurementAdvice {
-  choice: 'defer' | 'must_on_time'
-  label: string
-  reason: string
-  advice: string
-}
-
-const PROCUREMENT_ADVICE_MAX_LEN = 40
-
-function buildProcurementAdviceText(label: string, reason: string): string {
-  const prefix = `建议${label}：`
-  const maxReason = Math.max(4, PROCUREMENT_ADVICE_MAX_LEN - prefix.length)
-  return `${prefix}${reason.trim().slice(0, maxReason)}`
-}
-
-export function parseProcurementAdviceFromText(text: string): ParsedProcurementAdvice | null {
-  const t = text.trim()
-  if (!t) return null
-
-  const mentionsDefer = /延期|顺延|推迟|往后|下周/.test(t)
-  const mentionsUrgent = /当期|加急|按时|必须到货|紧急|当期到货/.test(t)
-
-  if (mentionsDefer && mentionsUrgent) return null
-
-  let choice: 'defer' | 'must_on_time' | null = null
-  if (mentionsDefer) choice = 'defer'
-  else if (mentionsUrgent) choice = 'must_on_time'
-  else return null
-
-  let reason = t
-    .replace(/^(建议|选择|选|提交)/, '')
-    .replace(/履约建议[是为：:]/, '')
-    .replace(/【延期】|【当期到货（加急）】|【当期到货】/g, '')
-    .replace(/延期|顺延|推迟|当期到货（加急）|当期到货|当期|加急/g, '')
-    .replace(/^[，,、：:\s]+/, '')
-    .replace(/[，,、：:\s]+$/, '')
-    .trim()
-
-  if (reason.length < 2) return null
-
-  const label =
-    choice === 'defer'
-      ? FULFILLMENT_METHOD_LABEL.defer
-      : FULFILLMENT_METHOD_LABEL.must_on_time
-
-  return {
-    choice,
-    label,
-    reason,
-    advice: buildProcurementAdviceText(label, reason),
-  }
-}
-
-export function parseSupplierChoiceFromText(
-  text: string,
-  supplierNames: string[]
-): { index: number; name?: string } | null {
-  const t = text.trim()
-  if (/第一家|第一个|推荐.*一|top\s*1/i.test(t)) return { index: 0 }
-  if (/第二|第二个/.test(t)) return { index: 1 }
-  if (/第三|第三个/.test(t)) return { index: 2 }
-
-  for (let i = 0; i < supplierNames.length; i++) {
-    if (t.includes(supplierNames[i])) return { index: i, name: supplierNames[i] }
-  }
-  return null
-}
-
-export function parseCustomSupplierFromText(
-  text: string
-): { name: string; amount: number } | null {
-  const t = text.trim()
-  if (!t) return null
-
-  const manualMatch = t.match(/手动录入\s+(.+?)\s+(\d+)\s*$/)
-  if (manualMatch) {
-    return { name: manualMatch[1].trim(), amount: Number(manualMatch[2]) }
-  }
-
-  const labeledMatch = t.match(/供应商[：:]\s*(.+?)[，,\s]+金额[：:]\s*(\d+)/)
-  if (labeledMatch) {
-    return { name: labeledMatch[1].trim(), amount: Number(labeledMatch[2]) }
-  }
-
-  const simpleMatch = t.match(/^(.{2,}?)\s+(\d{3,})\s*$/)
-  if (simpleMatch && !/用推荐|第\s*\d+\s*个/.test(t)) {
-    return { name: simpleMatch[1].trim(), amount: Number(simpleMatch[2]) }
-  }
-
-  return null
+export const MOBILE_SUGGESTED_QUESTIONS: Record<WorkbenchRole, string[]> = {
+  procurement: ['今日还有多少缺货？', '最紧急的是哪个品？', '打开数据大盘'],
+  sales: ['有哪些客户延期了？', '今日缺货总量多少？'],
+  ops: ['今日缺货汇总', '采购已提交多少？', '打开数据大盘'],
 }
 
 export const ROLE_LABEL: Record<WorkbenchRole, string> = {
@@ -364,25 +132,32 @@ export function getMobileTaskListItems(
   if (tab === 'pending') {
     items = getRoleTasksSorted(orders, role)
   } else {
-    const daily = getTodayShortageLines(orders)
-    items = daily
-      .filter((l) => isFulfillmentDone(l))
-      .map((l) => {
-        const task: RoleTaskItem = {
-          id: l.id,
-          lineId: l.id,
-          poId: l.po.id,
-          sku: l.sku,
-          title: `${l.po.customerName} · ${l.productName}`,
-          sub: '',
-          stage: 'fulfillment_done',
-        }
-        return enrichTask(task, orders)
-      })
+    items = getShortageLines(orders)
+      .filter(
+        (l) =>
+          isDeliveryToday(l.po.requiredDeliveryDate) &&
+          isFulfillmentDone(l) &&
+          (role !== 'sales' || isSalesTrackedShortageLine(l))
+      )
+      .map((l) => ({
+        id: l.id,
+        lineId: l.id,
+        poId: l.po.id,
+        sku: l.sku,
+        title: `${l.productName}`,
+        sub: `${l.po.customerName} · 已闭环`,
+        stage: 'fulfillment_done' as const,
+      }))
+      .map((t) => enrichTask(t, orders))
   }
 
   if (hotelFilter) {
-    items = items.filter((t) => t.customerName === hotelFilter || t.title.includes(hotelFilter))
+    items = items.filter(
+      (t) =>
+        t.customerName === hotelFilter ||
+        t.title.includes(hotelFilter) ||
+        (t.deliveryAddress && t.deliveryAddress.includes(hotelFilter))
+    )
   }
 
   return items.sort((a, b) => {
@@ -401,12 +176,3 @@ export function getMobileTaskListHotels(orders: ShortagePO[], role: WorkbenchRol
   }
   return [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
 }
-
-export const MOBILE_SUGGESTED_QUESTIONS = [
-  '今天缺货数据有多少？',
-  '今天已履约完成了多少？',
-  '我还有多少待办任务？',
-  '哪些任务最紧急？',
-  '任务卡在哪个节点？',
-  '香格里拉酒店的调和油怎么样了？',
-] as const

@@ -1,8 +1,9 @@
 import { MobileAgentComposer } from './MobileAgentComposer'
 import { MobileAgentThread } from './MobileAgentThread'
 import { MobileDashboardSheet } from './MobileDashboardSheet'
+import { MobileKpiDetailSheet } from './MobileKpiDetailSheet'
 import { MobileQuickActions } from './MobileQuickActions'
-import { MobilePipelineStageSheet } from './MobilePipelineStageSheet'
+import { MobileSalesHotelOverviewSheet } from './MobileSalesHotelOverviewSheet'
 import { MobileTaskListSheet } from './MobileTaskListSheet'
 
 export function MobileAgentHome() {
@@ -14,8 +15,9 @@ export function MobileAgentHome() {
         <MobileAgentComposer />
       </footer>
       <MobileDashboardSheet />
+      <MobileKpiDetailSheet />
       <MobileTaskListSheet />
-      <MobilePipelineStageSheet />
+      <MobileSalesHotelOverviewSheet />
     </div>
   )
 }

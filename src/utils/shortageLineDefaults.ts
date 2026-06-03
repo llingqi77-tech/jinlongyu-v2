@@ -1,19 +1,14 @@
-import type { FulfillmentMethod, ShortagePOLine } from '../types/shortage'
-import { getRecommendedSuppliers } from './supplierRecommendations'
-
-export function syncLegacySalesUrgency(method: FulfillmentMethod): ShortagePOLine['salesUrgency'] {
-  if (method === 'pending') return 'pending'
-  if (method === 'must_on_time') return 'must_on_time'
-  return 'normal'
-}
+import type { ShortagePOLine } from '../types/shortage'
+import { getLastPurchasePrice, getRecommendedSuppliers } from './supplierRecommendations'
 
 export function withLineDefaults(
   partial: Partial<ShortagePOLine> & Pick<ShortagePOLine, 'id' | 'sku' | 'productName'>
 ): ShortagePOLine {
-  const method = partial.fulfillmentMethod ?? 'pending'
+  const unitPrice = partial.unitPrice ?? 0
   const suppliers =
     partial.recommendedSuppliers ??
     (partial.isShortage !== false ? getRecommendedSuppliers(partial.sku) : [])
+  const lastPrice = partial.lastPurchasePrice ?? getLastPurchasePrice(partial.sku, unitPrice)
 
   const base: ShortagePOLine = {
     spec: '',
@@ -24,40 +19,36 @@ export function withLineDefaults(
     isShortage: true,
     availableStock: 0,
     gap: 0,
-    opsAdvice: '',
     fulfillmentMethod: 'pending',
     salesNote: '',
     salesOutboundType: null,
     salesOutboundNo: '',
-    expectedFulfillQty: 0,
     actualFulfillQty: 0,
     signoffStatus: 'pending',
     signoffAt: '',
     recommendedSuppliers: suppliers,
     selectedSupplierId: '',
     supplierName: '',
+    procurementPrice: lastPrice,
+    lastPurchasePrice: lastPrice,
     amount: 0,
     procurementDraftNo: '',
     procurementConfirmed: false,
     oaApprovalStatus: 'none',
     oaRequestNo: '',
-    salesUrgency: 'pending',
     eta: '',
+    deliveryMethod: null,
+    procurementOutcome: 'pending',
     isExpedited: false,
     expediteFee: 0,
     procurementMode: 'pending',
     status: 'new',
     opsPoNumber: '',
+    salesProcurementNotifiedAt: '',
     id: partial.id,
     sku: partial.sku,
     productName: partial.productName,
   }
 
-  return {
-    ...base,
-    ...partial,
-    fulfillmentMethod: method,
-    salesUrgency: partial.salesUrgency ?? syncLegacySalesUrgency(method),
-    recommendedSuppliers: partial.recommendedSuppliers ?? suppliers,
-  }
+  return { ...base, ...partial, recommendedSuppliers: partial.recommendedSuppliers ?? suppliers }
 }

@@ -10,7 +10,6 @@ import {
   getShortageLines,
   isDeliveryThisWeek,
   isDeliveryToday,
-  STAGE_ACTION_ROLE,
 } from './shortageAggregations'
 import { ROLE_LABEL } from './mobileAgentSummary'
 
@@ -30,11 +29,7 @@ export interface OpsTaskLineDetail {
   remark: string
 }
 
-const NOTIFY_STAGE_KEYS = new Set<PipelineStageKey>([
-  'procurement_advice',
-  'sales_method',
-  'procurement',
-])
+const NOTIFY_STAGE_KEYS = new Set<PipelineStageKey>(['procurement', 'sales_defer'])
 
 export function opsStageSupportsNotify(stageKey: PipelineStageKey): boolean {
   return NOTIFY_STAGE_KEYS.has(stageKey)
@@ -75,20 +70,18 @@ export function isRoleOwnedPipelineStage(
   role: WorkbenchRole,
   stageKey: PipelineStageKey
 ): boolean {
-  return STAGE_ACTION_ROLE[stageKey] === role
+  if (role === 'procurement') return stageKey === 'procurement'
+  if (role === 'sales') return stageKey === 'sales_defer'
+  return false
 }
 
-export function getStageViewOnlyNote(role: WorkbenchRole, stageKey: PipelineStageKey): string {
-  if (isRoleOwnedPipelineStage(role, stageKey)) return ''
-  if (stageKey === 'ops_create') return '该环节由系统录入，仅可查看。'
-  if (stageKey === 'fulfillment_done') return '该环节由物流处理，仅可查看。'
-  const owner = STAGE_ACTION_ROLE[stageKey]
-  if (owner) return `该环节由${ROLE_LABEL[owner]}负责，仅可查看。`
-  return '该环节仅可查看。'
+export function getOpsNotifyRoleLabel(stageKey: PipelineStageKey): string | null {
+  if (stageKey === 'procurement') return ROLE_LABEL.procurement
+  if (stageKey === 'sales_defer') return ROLE_LABEL.sales
+  return null
 }
 
 function toOpsTaskLineDetail(line: ShortageLineWithPo): OpsTaskLineDetail {
-  const remarks = [line.po.specialNote, line.salesNote].filter(Boolean)
   return {
     lineId: line.id,
     hotelName: line.po.customerName,
@@ -100,7 +93,7 @@ function toOpsTaskLineDetail(line: ShortageLineWithPo): OpsTaskLineDetail {
     unit: line.unit,
     gap: line.gap,
     deliveryDate: line.po.requiredDeliveryDate,
-    remark: remarks.length > 0 ? remarks.join('；') : '—',
+    remark: line.po.specialNote,
   }
 }
 
@@ -117,26 +110,4 @@ export function toMobileOrderInfoDetail(detail: OpsTaskLineDetail): MobileOrderI
     deliveryDate: detail.deliveryDate,
     remark: detail.remark,
   }
-}
-
-export function buildOpsNotifyMessage(
-  stageKey: PipelineStageKey,
-  details: OpsTaskLineDetail[]
-): string | null {
-  if (!opsStageSupportsNotify(stageKey) || details.length === 0) return null
-
-  const actionRole = STAGE_ACTION_ROLE[stageKey]
-  if (!actionRole) return null
-
-  const owner = ROLE_LABEL[actionRole]
-  const lines = details.map(
-    (d) =>
-      `${d.hotelName} · ${d.productName}（${d.spec}）缺 ${d.gap}${d.unit}，交期 ${d.deliveryDate}，地址 ${d.hotelAddress}`
-  )
-
-  if (lines.length === 1) {
-    return `请通知${owner}跟进：${lines[0]}。备注：${details[0].remark}`
-  }
-
-  return `请通知${owner}跟进以下 ${lines.length} 项：\n${lines.map((line, i) => `${i + 1}. ${line}`).join('\n')}`
 }

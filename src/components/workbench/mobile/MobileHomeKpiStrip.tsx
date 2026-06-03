@@ -1,92 +1,59 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
-import type { MobileKpiDimension } from '../../../types/shortage'
-import {
-  getMobileHomeKpis,
-  getMobileKpiShortageLabel,
-  MOBILE_KPI_DIMENSION_LABEL,
-  MOBILE_KPI_DIMENSION_OPTIONS,
-} from '../../../utils/mobileAgentSummary'
+import type { MobileKpiKind } from '../../../types/shortage'
+import { getMobileHomeKpis } from '../../../utils/mobileAgentSummary'
+
+const KPI_ITEMS: Array<{
+  kind: MobileKpiKind
+  label: string
+  dim: string
+  accent?: boolean
+  countKey: 'shortageLineCount' | 'procurementSubmittedCount' | 'logisticsClosedCount'
+}> = [
+  { kind: 'shortage', label: '今日缺货品', dim: '品', countKey: 'shortageLineCount' },
+  {
+    kind: 'submitted',
+    label: '采购已提交',
+    dim: '品',
+    accent: true,
+    countKey: 'procurementSubmittedCount',
+  },
+  { kind: 'logistics', label: '物流已闭环', dim: 'PO', countKey: 'logisticsClosedCount' },
+]
 
 export function MobileHomeKpiStrip() {
   const orders = useShortageStore((s) => s.orders)
   const role = useShortageStore((s) => s.role)
-  const [dimension, setDimension] = useState<MobileKpiDimension>('sku')
-  const [filterOpen, setFilterOpen] = useState(false)
-  const filterRef = useRef<HTMLDivElement>(null)
-  const menuId = useId()
+  const openDashboard = useShortageStore((s) => s.openMobileDashboardSheet)
+  const openKpiDetail = useShortageStore((s) => s.openMobileKpiDetailSheet)
 
-  const kpis = useMemo(
-    () => getMobileHomeKpis(orders, role, dimension),
-    [orders, role, dimension]
-  )
-
-  const dimLabel = MOBILE_KPI_DIMENSION_LABEL[dimension]
-  const shortageLabel = getMobileKpiShortageLabel(dimension)
-
-  useEffect(() => {
-    if (!filterOpen) return
-    const onPointerDown = (e: PointerEvent) => {
-      if (!filterRef.current?.contains(e.target as Node)) setFilterOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [filterOpen])
+  const kpis = useMemo(() => getMobileHomeKpis(orders, role), [orders, role])
 
   return (
-    <div className="mobile-kpi-panel" role="group" aria-label="今日数据概览">
+    <div className="mobile-kpi-panel" role="group" aria-label="今日缺货处理概览">
+      <button
+        type="button"
+        className="mobile-kpi-panel__dashboard-bar"
+        onClick={openDashboard}
+        aria-label="打开缺货品履约数据"
+      >
+        缺货品履约数据
+      </button>
       <div className="mobile-kpi-panel__row">
         <div className="mobile-kpi-strip">
-          <div className="mobile-kpi-strip__item">
-            <span className="mobile-kpi-strip__value">{kpis.fulfilledCount}</span>
-            <span className="mobile-kpi-strip__label">已履约</span>
-          </div>
-          <div className="mobile-kpi-strip__item mobile-kpi-strip__item--accent">
-            <span className="mobile-kpi-strip__value">{kpis.pendingTaskCount}</span>
-            <span className="mobile-kpi-strip__label">待完成</span>
-          </div>
-          <div className="mobile-kpi-strip__item">
-            <span className="mobile-kpi-strip__value">{kpis.shortageLineCount}</span>
-            <span className="mobile-kpi-strip__label">{shortageLabel}</span>
-          </div>
-        </div>
-
-        <div className="mobile-kpi-panel__filter" ref={filterRef}>
-          <button
-            type="button"
-            className="mobile-kpi-panel__filter-btn"
-            aria-expanded={filterOpen}
-            aria-haspopup="listbox"
-            aria-controls={menuId}
-            onClick={() => setFilterOpen((v) => !v)}
-          >
-            按{dimLabel}
-            <span className="mobile-kpi-panel__filter-caret" aria-hidden>
-              ▾
-            </span>
-          </button>
-          {filterOpen ? (
-            <ul id={menuId} className="mobile-kpi-panel__filter-menu" role="listbox">
-              {MOBILE_KPI_DIMENSION_OPTIONS.map((d) => (
-                <li key={d} role="option" aria-selected={d === dimension}>
-                  <button
-                    type="button"
-                    className={
-                      d === dimension
-                        ? 'mobile-kpi-panel__filter-option mobile-kpi-panel__filter-option--active'
-                        : 'mobile-kpi-panel__filter-option'
-                    }
-                    onClick={() => {
-                      setDimension(d)
-                      setFilterOpen(false)
-                    }}
-                  >
-                    {MOBILE_KPI_DIMENSION_LABEL[d]}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          {KPI_ITEMS.map((item) => (
+            <button
+              key={item.kind}
+              type="button"
+              className={`mobile-kpi-strip__item${item.accent ? ' mobile-kpi-strip__item--accent' : ''} mobile-kpi-strip__item--clickable`}
+              onClick={() => openKpiDetail(item.kind)}
+              aria-label={`${item.label} ${kpis[item.countKey]}，查看明细`}
+            >
+              <span className="mobile-kpi-strip__value">{kpis[item.countKey]}</span>
+              <span className="mobile-kpi-strip__label">{item.label}</span>
+              <span className="mobile-kpi-strip__dim">{item.dim}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>

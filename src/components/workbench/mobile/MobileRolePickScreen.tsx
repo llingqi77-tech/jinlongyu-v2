@@ -1,5 +1,5 @@
 import { useShortageStore } from '../../../store/shortageStore'
-import type { WorkbenchRole } from '../../../types/shortage'
+import type { ProcurementOaPreviewOutcome, WorkbenchRole } from '../../../types/shortage'
 
 const ROLES: { id: WorkbenchRole; label: string; desc: string; icon: string }[] = [
   { id: 'ops', label: '运营', desc: '掌握全链路缺货与各环节进度', icon: '📊' },
@@ -9,12 +9,17 @@ const ROLES: { id: WorkbenchRole; label: string; desc: string; icon: string }[] 
 
 export function MobileRolePickScreen() {
   const setRole = useShortageStore((s) => s.setRole)
-  const setMobileOnboardingPhase = useShortageStore((s) => s.setMobileOnboardingPhase)
+  const finishMobileActivation = useShortageStore((s) => s.finishMobileActivation)
+  const enterProcurementOaNotifyPreview = useShortageStore((s) => s.enterProcurementOaNotifyPreview)
   const closeWorkbench = useShortageStore((s) => s.closeWorkbench)
 
   const pick = (role: WorkbenchRole) => {
     setRole(role)
-    setMobileOnboardingPhase('activating')
+    finishMobileActivation()
+  }
+
+  const pickOaPreview = (outcome: ProcurementOaPreviewOutcome) => {
+    enterProcurementOaNotifyPreview(outcome)
   }
 
   return (
@@ -67,6 +72,31 @@ export function MobileRolePickScreen() {
                 </button>
               </li>
             ))}
+            <li className="mobile-role-pick__preview-item">
+              <button
+                type="button"
+                className="mobile-role-pick__card mobile-role-pick__card--preview"
+                onClick={() => pickOaPreview('approved')}
+              >
+                <span className="mobile-role-pick__icon" aria-hidden>
+                  🔔
+                </span>
+                <span className="mobile-role-pick__body">
+                  <span className="mobile-role-pick__label">OA提醒通知</span>
+                  <span className="mobile-role-pick__desc">采购收到 OA 结果后的填写页预览</span>
+                </span>
+                <span className="mobile-role-pick__arrow" aria-hidden>
+                  ›
+                </span>
+              </button>
+              <button
+                type="button"
+                className="mobile-role-pick__oa-alt"
+                onClick={() => pickOaPreview('rejected')}
+              >
+                预览 OA 驳回场景
+              </button>
+            </li>
           </ul>
         </div>
       </section>

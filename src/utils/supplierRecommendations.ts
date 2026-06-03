@@ -15,16 +15,22 @@ function hashSku(sku: string): number {
   return Math.abs(h)
 }
 
+export function getPrimarySupplier(sku: string): SupplierCandidate {
+  const idx = hashSku(sku) % SUPPLIER_POOL.length
+  return { id: `sup-${sku}-primary`, name: SUPPLIER_POOL[idx] }
+}
+
+/** 按 SKU+PO 带出上次下单供应商（演示：不同 PO 可能不同） */
+export function getLastSupplierForPo(sku: string, poId: string): SupplierCandidate {
+  const idx = hashSku(`${sku}::${poId}`) % SUPPLIER_POOL.length
+  return { id: `sup-${sku}-${poId.slice(-4)}`, name: SUPPLIER_POOL[idx] }
+}
+
 export function getRecommendedSuppliers(sku: string): SupplierCandidate[] {
-  const base = hashSku(sku)
-  return [0, 1, 2].map((offset) => {
-    const idx = (base + offset) % SUPPLIER_POOL.length
-    const score = 92 - offset * 4 - (base % 5)
-    return {
-      id: `sup-${sku}-${offset}`,
-      name: SUPPLIER_POOL[idx],
-      score,
-      hasStock: 'unknown' as const,
-    }
-  })
+  return [getPrimarySupplier(sku)]
+}
+
+export function getLastPurchasePrice(sku: string, unitPrice: number): number {
+  const offset = (hashSku(sku) % 5) - 2
+  return Math.max(1, unitPrice + offset)
 }

@@ -1,33 +1,27 @@
 import { create } from 'zustand'
+import { OA_NOTIFY_PREVIEW_SKU } from '../constants/oaNotifyPreview'
+import { buildOaNotifyPreviewOrders } from '../mocks/oaNotifyPreviewOrders'
 import { MOCK_SHORTAGE_ORDERS } from '../mocks/shortageOrders'
 import type {
   ActivityEvent,
-  FulfillmentMethod,
   MobileAgentPhase,
   MobileChatMessage,
   MobileOnboardingPhase,
-  PipelineStageFilter,
-  PipelineStageKey,
+  ProcurementOaPreviewOutcome,
   ShortagePO,
-  TaskFlowKind,
-  WorkbenchOverlayView,
+  SubmitProcurementPayload,
+  SubmitProcurementSkuBatchPayload,
   WorkbenchRole,
+  MobileKpiKind,
 } from '../types/shortage'
 import { getMobileHomeKpis, getRoleTasksSorted } from '../utils/mobileAgentSummary'
 import {
   applyBackendLogisticsRouting,
   ensureLineSuppliers,
-  getTasksForFlowKind,
   recomputeLineStatus,
+  type ProcurementListSort,
 } from '../utils/shortageAggregations'
-import { syncLegacySalesUrgency } from '../utils/shortageLineDefaults'
-import {
-  isLogisticsFulfillment,
-  lineNeedsProcurementAdvice,
-  showsSalesNote,
-  showsSupplierProcurement,
-} from '../utils/fulfillmentMethodRules'
-import type { SupplierStockStatus } from '../types/shortage'
+import { getLastSupplierForPo } from '../utils/supplierRecommendations'
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -51,65 +45,58 @@ export interface ShortageState {
   selectedTaskLineId: string | null
   activityEvents: ActivityEvent[]
   generatePoLineId: string | null
-  pipelineFilter: PipelineStageFilter | null
   toast: string | null
   signoffTimerId: ReturnType<typeof setInterval> | null
-  overlayView: WorkbenchOverlayView | null
   mobileChatMessages: MobileChatMessage[]
   activeTaskLineId: string | null
   mobileAgentPhase: MobileAgentPhase
   mobileOnboardingPhase: MobileOnboardingPhase
   mobileDashboardOpen: boolean
+  mobileKpiDetailKind: MobileKpiKind | null
   mobileTaskListOpen: boolean
-  mobilePipelineStageKey: PipelineStageKey | null
+  mobileSalesHotelOverviewOpen: boolean
   mobileTaskDisplayIndex: number
+  expandedSku: string | null
+  procurementActiveSku: string | null
+  procurementOaPreview: ProcurementOaPreviewOutcome | null
+  procurementListSort: ProcurementListSort | null
 
   openWorkbench: () => void
   closeWorkbench: () => void
   setRole: (role: WorkbenchRole) => void
-  setPipelineFilter: (filter: PipelineStageFilter | null) => void
   selectTaskLine: (lineId: string | null) => void
+  setExpandedSku: (sku: string | null) => void
+  openProcurementSkuPage: (sku: string) => void
+  closeProcurementSkuPage: () => void
+  enterProcurementOaNotifyPreview: (outcome: ProcurementOaPreviewOutcome) => void
   loadTodayShortages: () => void
-  setOpsAdvice: (lineId: string, advice: string) => void
-  setFulfillmentMethod: (lineId: string, method: FulfillmentMethod, note?: string) => void
-  setSupplierStock: (lineId: string, supplierId: string, hasStock: SupplierStockStatus) => void
-  selectSupplier: (lineId: string, supplierId: string) => void
-  applyCustomSupplier: (lineId: string, name: string, amount: number, supplierId?: string) => void
+  submitProcurementLine: (lineId: string, payload: SubmitProcurementPayload) => void
+  submitProcurementSkuBatch: (payload: SubmitProcurementSkuBatchPayload) => boolean
   submitOaApproval: (lineId: string) => void
+  submitOaApprovalBatch: (lineIds: string[], productName: string, options?: { silent?: boolean }) => void
   receiveOaApproval: (lineId: string, status: 'approved' | 'rejected') => void
-  generateProcurementDraft: (lineId: string) => void
-  openGeneratePo: (lineId: string) => void
-  closeGeneratePo: () => void
   confirmProcurementToErp: (lineId: string) => void
   applySignoff: (lineId: string, qty?: number) => void
   startSignoffMock: () => void
   stopSignoffMock: () => void
   pushActivity: (event: Omit<ActivityEvent, 'id' | 'timestamp'>) => void
   setToast: (msg: string | null) => void
-  openOverlay: (view: WorkbenchOverlayView) => void
-  closeOverlay: () => void
-  openTaskFlow: (kind: TaskFlowKind) => void
-  closeTaskFlow: () => void
-  checkTaskFlowComplete: () => void
   resetMobileAgentSession: () => void
   appendMobileChat: (msg: Omit<MobileChatMessage, 'id' | 'timestamp'>) => void
   setActiveTask: (lineId: string | null) => void
   setMobileAgentPhase: (phase: MobileAgentPhase) => void
   setMobileTaskDisplayIndex: (index: number) => void
-  completeActiveMobileTask: (payload: {
-    fulfillmentMethod?: FulfillmentMethod
-    salesNote?: string
-    opsAdvice?: string
-    supplierIndex?: number
-  }) => boolean
   setMobileOnboardingPhase: (phase: MobileOnboardingPhase) => void
   finishMobileActivation: () => void
   openMobileDashboardSheet: () => void
   closeMobileDashboardSheet: () => void
+  openMobileKpiDetailSheet: (kind: MobileKpiKind) => void
+  closeMobileKpiDetailSheet: () => void
   openMobileTaskListSheet: () => void
   closeMobileTaskListSheet: () => void
-  openMobilePipelineStageSheet: (stageKey: PipelineStageKey) => void
-  closeMobilePipelineStageSheet: () => void
+  openMobileSalesHotelOverview: () => void
+  closeMobileSalesHotelOverview: () => void
+  setProcurementListSort: (sort: ProcurementListSort | null) => void
 }
 
 function patchLine(
@@ -127,9 +114,12 @@ function patchLine(
   }))
 }
 
-function createSalesOutboundNo(type: 'order_direct' | 'backorder') {
-  const prefix = type === 'order_direct' ? 'SO-D' : 'SO-B'
-  return `${prefix}-${Date.now().toString().slice(-8)}`
+function findLine(orders: ShortagePO[], lineId: string) {
+  for (const po of orders) {
+    const line = po.lines.find((l) => l.id === lineId)
+    if (line) return { line, po }
+  }
+  return null
 }
 
 export const useShortageStore = create<ShortageState>((set, get) => ({
@@ -139,18 +129,21 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
   selectedTaskLineId: null,
   activityEvents: [],
   generatePoLineId: null,
-  pipelineFilter: null,
   toast: null,
   signoffTimerId: null,
-  overlayView: null,
   mobileChatMessages: [],
   activeTaskLineId: null,
   mobileAgentPhase: 'idle',
   mobileOnboardingPhase: 'role_pick',
   mobileDashboardOpen: false,
+  mobileKpiDetailKind: null,
   mobileTaskListOpen: false,
-  mobilePipelineStageKey: null,
+  mobileSalesHotelOverviewOpen: false,
   mobileTaskDisplayIndex: 0,
+  expandedSku: null,
+  procurementActiveSku: null,
+  procurementOaPreview: null,
+  procurementListSort: null,
 
   openWorkbench: () => {
     const { signoffTimerId } = get()
@@ -159,16 +152,19 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     set({
       workbenchOpen: true,
       selectedTaskLineId: null,
-      pipelineFilter: null,
-      overlayView: null,
       mobileChatMessages: [],
       activeTaskLineId: null,
       mobileAgentPhase: 'idle',
       mobileOnboardingPhase: 'role_pick',
       mobileDashboardOpen: false,
+      mobileKpiDetailKind: null,
       mobileTaskListOpen: false,
-      mobilePipelineStageKey: null,
+      mobileSalesHotelOverviewOpen: false,
       mobileTaskDisplayIndex: 0,
+      expandedSku: null,
+      procurementActiveSku: null,
+      procurementOaPreview: null,
+      procurementListSort: null,
     })
   },
 
@@ -178,15 +174,19 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       workbenchOpen: false,
       generatePoLineId: null,
       selectedTaskLineId: null,
-      overlayView: null,
       mobileOnboardingPhase: 'role_pick',
       mobileDashboardOpen: false,
+      mobileKpiDetailKind: null,
       mobileTaskListOpen: false,
-      mobilePipelineStageKey: null,
+      mobileSalesHotelOverviewOpen: false,
       mobileChatMessages: [],
       activeTaskLineId: null,
       mobileAgentPhase: 'idle',
       mobileTaskDisplayIndex: 0,
+      expandedSku: null,
+      procurementActiveSku: null,
+      procurementOaPreview: null,
+      procurementListSort: null,
     })
   },
 
@@ -194,22 +194,55 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     set({
       role,
       selectedTaskLineId: null,
-      pipelineFilter: null,
-      overlayView: null,
       mobileChatMessages: [],
       activeTaskLineId: null,
       mobileAgentPhase: 'idle',
       mobileTaskDisplayIndex: 0,
+      expandedSku: null,
+      procurementActiveSku: null,
+      procurementOaPreview: null,
+      procurementListSort: null,
     })
   },
 
-  setPipelineFilter: (filter) =>
-    set((s) => ({
-      pipelineFilter: s.pipelineFilter === filter ? null : filter,
-      selectedTaskLineId: null,
-    })),
-
   selectTaskLine: (lineId) => set({ selectedTaskLineId: lineId }),
+  setExpandedSku: (sku) => set({ expandedSku: sku }),
+
+  openProcurementSkuPage: (sku) => set({ procurementActiveSku: sku, expandedSku: null }),
+
+  closeProcurementSkuPage: () => {
+    const wasPreview = get().procurementOaPreview != null
+    if (wasPreview) {
+      get().loadTodayShortages()
+      set({ procurementActiveSku: null, procurementOaPreview: null })
+      get().finishMobileActivation()
+      return
+    }
+    set({ procurementActiveSku: null, procurementOaPreview: null })
+  },
+
+  enterProcurementOaNotifyPreview: (outcome) => {
+    const oaStatus = outcome === 'approved' ? 'approved' : 'rejected'
+    const orders = applyBackendLogisticsRouting(cloneOrders(buildOaNotifyPreviewOrders(oaStatus)))
+    set({
+      orders,
+      role: 'procurement',
+      selectedTaskLineId: null,
+      mobileChatMessages: [],
+      activeTaskLineId: null,
+      mobileAgentPhase: 'idle',
+      mobileOnboardingPhase: 'ready',
+      mobileDashboardOpen: false,
+      mobileKpiDetailKind: null,
+      mobileTaskListOpen: false,
+      mobileSalesHotelOverviewOpen: false,
+      mobileTaskDisplayIndex: 0,
+      expandedSku: null,
+      procurementActiveSku: OA_NOTIFY_PREVIEW_SKU,
+      procurementOaPreview: outcome,
+      procurementListSort: null,
+    })
+  },
 
   loadTodayShortages: () => {
     const orders = applyBackendLogisticsRouting(cloneOrders(MOCK_SHORTAGE_ORDERS))
@@ -221,191 +254,225 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
           timestamp: nowTime(),
           actor: '系统',
           type: 'sync',
-          content: `今日缺货已同步：${orders.length} 张待转单；直发/正常补货已算路，采购/销售待办已推送`,
+          content: `今日缺货已同步：${orders.length} 张待转单；直发/正常补货已自动算路，采购待办已推送`,
         },
       ],
     })
   },
 
-  setOpsAdvice: (lineId, advice) => {
-    const line = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
-    if (!line || !lineNeedsProcurementAdvice(line)) return
-    const orders = patchLine(get().orders, lineId, { opsAdvice: advice.trim() })
+  submitProcurementLine: (lineId, payload) => {
+    const found = findLine(get().orders, lineId)
+    if (!found) return
+    const { line } = found
+
+    if (payload.outcome === 'not_satisfied') {
+      const orders = patchLine(get().orders, lineId, {
+        procurementOutcome: 'not_satisfied',
+        fulfillmentMethod: 'defer',
+        supplierName: '',
+        selectedSupplierId: '',
+        amount: 0,
+        procurementPrice: 0,
+        eta: '',
+        deliveryMethod: null,
+        oaApprovalStatus: 'none',
+        oaRequestNo: '',
+        procurementDraftNo: '',
+        procurementConfirmed: false,
+        salesOutboundType: 'backorder',
+        salesOutboundNo: line.salesOutboundNo || `SO-B-${Date.now().toString().slice(-8)}`,
+        salesProcurementNotifiedAt: new Date().toISOString(),
+      })
+      set({ orders })
+      get().pushActivity({
+        actor: '采购',
+        type: 'procurement',
+        content: `${line.productName} 无法满足，已通知销售跟进延期`,
+        ref: { sku: line.sku },
+      })
+      get().setToast('已标记为不满足，销售将收到延期通知')
+      return
+    }
+
+    const supplierName = payload.supplierName?.trim() || line.supplierName
+    const price = payload.price ?? line.procurementPrice
+    const amount = Math.round(price * line.gap)
+    const eta = payload.eta ?? ''
+    const deliveryMethod = payload.deliveryMethod ?? 'warehouse'
+
+    if (!supplierName || !eta) {
+      get().setToast('请填写供应商与交期')
+      return
+    }
+
+    const primary = ensureLineSuppliers(line).recommendedSuppliers[0]
+    const orders = patchLine(get().orders, lineId, {
+      procurementOutcome: 'satisfied',
+      fulfillmentMethod: 'satisfied',
+      supplierName,
+      selectedSupplierId: primary?.id ?? 'custom',
+      procurementPrice: price,
+      amount,
+      eta,
+      deliveryMethod,
+      procurementMode: 'urgent',
+      salesProcurementNotifiedAt: new Date().toISOString(),
+    })
     set({ orders })
     get().pushActivity({
       actor: '采购',
       type: 'procurement',
-      content: '已确认缺货履约建议并流转销售沟通',
-      ref: { poId: get().orders.find((o) => o.lines.some((l) => l.id === lineId))?.id },
+      content: `${line.productName} 缺货处理已提交：${supplierName} · ¥${amount.toLocaleString()} · ${eta}`,
     })
-    get().setToast('缺货履约建议已确认，已流转销售')
-    get().checkTaskFlowComplete()
+    get().setToast('缺货处理已提交，推送 OA 审批')
+    get().submitOaApproval(lineId)
   },
 
-  setFulfillmentMethod: (lineId, method, note = '') => {
-    const line = get()
-      .orders.flatMap((o) => o.lines.map((l) => ({ ...l, po: o })))
-      .find((l) => l.id === lineId)
-    if (!line) return
-
-    const patch: Partial<ShortagePO['lines'][0]> = {
-      fulfillmentMethod: method,
-      salesNote: showsSalesNote(method) ? note : '',
-      salesUrgency: syncLegacySalesUrgency(method),
+  submitProcurementSkuBatch: (payload) => {
+    const { sku, rows } = payload
+    if (rows.length === 0) {
+      get().setToast('没有可提交的 PO')
+      return false
     }
 
-    if (isLogisticsFulfillment(method)) {
-      patch.opsAdvice = ''
-      patch.salesNote = ''
-      patch.supplierName = ''
-      patch.selectedSupplierId = ''
-      patch.amount = 0
-      patch.procurementDraftNo = ''
-      patch.procurementConfirmed = false
-      patch.recommendedSuppliers = []
-    } else if (!showsSupplierProcurement(method)) {
-      patch.supplierName = ''
-      patch.selectedSupplierId = ''
-      patch.amount = 0
-      patch.procurementDraftNo = ''
-      patch.procurementConfirmed = false
-      patch.recommendedSuppliers = []
-    }
-
-    if (method === 'direct_ship' || method === 'normal_replenishment') {
-      patch.salesOutboundType = 'order_direct'
-      patch.salesOutboundNo = line.salesOutboundNo || createSalesOutboundNo('order_direct')
-      patch.expectedFulfillQty = line.gap
-    } else if (method === 'defer') {
-      patch.salesOutboundType = 'backorder'
-      patch.salesOutboundNo = line.salesOutboundNo || createSalesOutboundNo('backorder')
-      patch.expectedFulfillQty = line.gap
-    } else if (method === 'must_on_time') {
-      patch.salesOutboundType = null
-      patch.recommendedSuppliers = line.recommendedSuppliers.length
-        ? line.recommendedSuppliers
-        : ensureLineSuppliers(line).recommendedSuppliers
-    }
-
-    const orders = patchLine(get().orders, lineId, patch)
-    set({ orders })
-    const poId = get().orders.find((o) => o.lines.some((l) => l.id === lineId))?.id
-    get().pushActivity({
-      actor: '销售',
-      type: 'sales',
-      content:
-        method === 'must_on_time'
-          ? '已确认当期到货（加急），已流转采购'
-          : `已确认履约方式并生成出库单`,
-      ref: { poId },
-    })
-    get().setToast(
-      method === 'must_on_time'
-        ? '已转采购寻源'
-        : `已生成${patch.salesOutboundType === 'backorder' ? ' Backorder ' : ' '}销售出库订单`
-    )
-    get().checkTaskFlowComplete()
-  },
-
-  setSupplierStock: (lineId, supplierId, hasStock) => {
-    const orders = get().orders.map((po) => ({
-      ...po,
-      lines: po.lines.map((line) => {
-        if (line.id !== lineId) return line
-        return {
-          ...line,
-          recommendedSuppliers: line.recommendedSuppliers.map((s) =>
-            s.id === supplierId ? { ...s, hasStock } : s
-          ),
+    for (const row of rows) {
+      if (row.fulfillmentMode === 'urgent') {
+        if (!row.supplierName?.trim() || !row.eta || row.price == null || row.price <= 0) {
+          get().setToast('加急 PO 请填写供应商、价格与交期')
+          return false
         }
-      }),
-    }))
-    set({ orders })
-  },
+      }
+    }
 
-  selectSupplier: (lineId, supplierId) => {
-    const line = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
-    const supplier = line?.recommendedSuppliers.find((s) => s.id === supplierId)
-    if (!supplier) return
-    const orders = patchLine(get().orders, lineId, {
-      selectedSupplierId: supplierId,
-      supplierName: supplier.name,
-    })
-    set({ orders })
-  },
+    let orders = get().orders
+    const satisfiedLineIds: string[] = []
+    let productName = ''
+    const notifiedAt = new Date().toISOString()
 
-  applyCustomSupplier: (lineId, name, amount, supplierId = 'custom') => {
-    const orders = patchLine(get().orders, lineId, {
-      selectedSupplierId: supplierId,
-      supplierName: name.trim(),
-      amount,
-      procurementMode: 'urgent',
-      oaApprovalStatus: 'none',
-      oaRequestNo: '',
-      procurementDraftNo: '',
-      procurementConfirmed: false,
+    for (const row of rows) {
+      const found = findLine(orders, row.lineId)
+      if (!found || found.line.sku !== sku) continue
+      const { line } = found
+      productName = line.productName
+
+      if (row.fulfillmentMode === 'defer') {
+        orders = patchLine(orders, row.lineId, {
+          procurementOutcome: 'not_satisfied',
+          fulfillmentMethod: 'defer',
+          procurementMode: 'normal',
+          actualFulfillQty: 0,
+          supplierName: '',
+          selectedSupplierId: '',
+          amount: 0,
+          procurementPrice: 0,
+          eta: found.po.requiredDeliveryDate,
+          deliveryMethod: null,
+          oaApprovalStatus: 'none',
+          oaRequestNo: '',
+          procurementDraftNo: '',
+          procurementConfirmed: false,
+          salesOutboundType: 'backorder',
+          salesOutboundNo: line.salesOutboundNo || `SO-B-${Date.now().toString().slice(-8)}`,
+          salesProcurementNotifiedAt: notifiedAt,
+        })
+        continue
+      }
+
+      const supplier = getLastSupplierForPo(sku, found.po.id)
+      orders = patchLine(orders, row.lineId, {
+        procurementOutcome: 'satisfied',
+        fulfillmentMethod: 'satisfied',
+        procurementMode: 'urgent',
+        actualFulfillQty: row.actualFulfillQty,
+        supplierName: row.supplierName!.trim(),
+        selectedSupplierId: supplier.id,
+        procurementPrice: row.price!,
+        amount: Math.round(row.price! * row.actualFulfillQty),
+        eta: row.eta!,
+        deliveryMethod: row.deliveryMethod ?? 'warehouse',
+        salesProcurementNotifiedAt: notifiedAt,
+      })
+      satisfiedLineIds.push(row.lineId)
+    }
+
+    set({ orders })
+
+    get().pushActivity({
+      actor: '采购',
+      type: 'procurement',
+      content: `${productName} · ${rows.length} 个 PO 已处理`,
+      ref: { sku },
     })
-    set({ orders, generatePoLineId: null })
-    get().setToast(supplierId === 'custom' ? '已录入自定义供应商' : '已选用供应商')
+
+    if (satisfiedLineIds.length > 0) {
+      get().submitOaApprovalBatch(satisfiedLineIds, productName, { silent: true })
+    }
+
+    return true
   },
 
   submitOaApproval: (lineId) => {
-    const line = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
-    if (!line?.supplierName || line.amount <= 0) {
-      get().setToast('请先选用供应商')
-      return
-    }
-    if (line.fulfillmentMethod !== 'must_on_time') {
-      get().generateProcurementDraft(lineId)
-      return
-    }
-    const oaRequestNo = `OA-${Date.now().toString().slice(-8)}`
-    const orders = patchLine(get().orders, lineId, {
-      oaApprovalStatus: 'pending',
-      oaRequestNo,
-      procurementMode: 'urgent',
-      procurementDraftNo: '',
-      procurementConfirmed: false,
+    get().submitOaApprovalBatch([lineId], findLine(get().orders, lineId)?.line.productName ?? '')
+  },
+
+  submitOaApprovalBatch: (lineIds, productName, options?: { silent?: boolean }) => {
+    const validIds = lineIds.filter((id) => {
+      const line = findLine(get().orders, id)?.line
+      return line?.supplierName && line.amount > 0
     })
-    set({ orders, generatePoLineId: null })
+    if (validIds.length === 0) {
+      get().setToast('请先完成缺货处理表单')
+      return
+    }
+
+    const oaRequestNo = `OA-${Date.now().toString().slice(-8)}`
+    let orders = get().orders
+    for (const lineId of validIds) {
+      orders = patchLine(orders, lineId, {
+        oaApprovalStatus: 'pending',
+        oaRequestNo,
+        procurementDraftNo: '',
+        procurementConfirmed: false,
+      })
+    }
+    set({ orders })
     get().pushActivity({
       actor: '采购',
       type: 'procurement',
-      content: `已提交 OA 审批 ${oaRequestNo}（${line.supplierName} · ¥${line.amount.toLocaleString()}）`,
+      content: `${productName} 已提交 OA 审批 ${oaRequestNo}（${validIds.length} 个 PO）`,
     })
-    get().pushActivity({
-      actor: 'Agent',
-      type: 'system',
-      content: `寻源单已推送 OA 系统，单号 ${oaRequestNo}，等待审批结果回传…`,
-    })
-    get().setToast('已提交 OA 审批')
+    if (!options?.silent) {
+      get().setToast(`已整批提交 OA 审批（${validIds.length} 个 PO）`)
+    }
 
     window.setTimeout(() => {
-      const current = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
-      if (current?.oaApprovalStatus === 'pending') {
-        get().receiveOaApproval(lineId, 'approved')
+      for (const lineId of validIds) {
+        const current = findLine(get().orders, lineId)?.line
+        if (current?.oaApprovalStatus === 'pending') {
+          get().receiveOaApproval(lineId, 'approved')
+        }
       }
     }, 2800)
   },
 
   receiveOaApproval: (lineId, status) => {
-    const line = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
+    const line = findLine(get().orders, lineId)?.line
     if (!line || line.oaApprovalStatus !== 'pending') return
 
     if (status === 'approved') {
-      const orders = patchLine(get().orders, lineId, { oaApprovalStatus: 'approved' })
+      const draftNo = `DRAFT-${Date.now().toString().slice(-5)}`
+      const orders = patchLine(get().orders, lineId, {
+        oaApprovalStatus: 'approved',
+        procurementDraftNo: draftNo,
+      })
       set({ orders })
       get().pushActivity({
         actor: 'OA系统',
         type: 'procurement',
-        content: `审批单 ${line.oaRequestNo} 回传状态：Approve，可生成采购订单`,
+        content: `审批单 ${line.oaRequestNo} 已通过`,
       })
-      get().pushActivity({
-        actor: 'Agent',
-        type: 'procurement',
-        content: `OA 已通过，请为 ${line.productName} 生成采购订单并下发 ERP`,
-      })
-      get().setToast('OA 审批已通过')
+      get().setToast('OA 已通过，正在生成采购订单…')
+      window.setTimeout(() => get().confirmProcurementToErp(lineId), 600)
       return
     }
 
@@ -413,71 +480,44 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       oaApprovalStatus: 'rejected',
       procurementDraftNo: '',
     })
-    set({ orders, generatePoLineId: null })
+    set({ orders })
     get().pushActivity({
       actor: 'OA系统',
       type: 'procurement',
-      content: `审批单 ${line.oaRequestNo} 回传状态：Reject`,
+      content: `审批单 ${line.oaRequestNo} 已驳回，请修改后重新提交`,
     })
-    get().setToast('OA 审批已驳回，请调整供应商后重新提交')
+    get().setToast('OA 已驳回，请修改后重新提交')
   },
-
-  generateProcurementDraft: (lineId) => {
-    const line = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
-    if (
-      line?.fulfillmentMethod === 'must_on_time' &&
-      line.oaApprovalStatus !== 'approved'
-    ) {
-      get().setToast('当期到货须先完成 OA 审批')
-      return
-    }
-    const draftNo = `DRAFT-${Date.now().toString().slice(-5)}`
-    const orders = patchLine(get().orders, lineId, { procurementDraftNo: draftNo })
-    set({ orders, generatePoLineId: lineId })
-    get().pushActivity({
-      actor: 'Agent',
-      type: 'procurement',
-      content: `已生成采购订单草稿 ${draftNo}`,
-    })
-  },
-
-  openGeneratePo: (lineId) => set({ generatePoLineId: lineId }),
-  closeGeneratePo: () => set({ generatePoLineId: null }),
 
   confirmProcurementToErp: (lineId) => {
     const poNumber = `PU-${Date.now().toString().slice(-6)}`
-    const line = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
     const orders = patchLine(get().orders, lineId, {
       procurementConfirmed: true,
       opsPoNumber: poNumber,
-      procurementMode: 'urgent',
-      expectedFulfillQty: (line?.expectedFulfillQty ?? 0) + (line?.gap ?? 0),
     })
-    set({ orders, generatePoLineId: null })
+    set({ orders })
     get().pushActivity({
-      actor: '运营',
+      actor: '系统',
       type: 'ops',
       content: `采购订单 ${poNumber} 已写入金龙鱼采购系统`,
     })
     get().setToast(`采购订单 ${poNumber} 已确认下发`)
-    get().checkTaskFlowComplete()
   },
 
   applySignoff: (lineId, qty) => {
-    const line = get().orders.flatMap((o) => o.lines).find((l) => l.id === lineId)
+    const line = findLine(get().orders, lineId)?.line
     if (!line || !line.isShortage) return
     const signQty = qty ?? line.gap
-    const actual = Math.min(line.expectedFulfillQty || line.gap, signQty)
     const orders = patchLine(get().orders, lineId, {
-      actualFulfillQty: actual,
-      signoffStatus: actual >= (line.expectedFulfillQty || line.gap) ? 'signed' : 'partial',
+      actualFulfillQty: signQty,
+      signoffStatus: signQty >= line.gap ? 'signed' : 'pending',
       signoffAt: new Date().toISOString().slice(0, 10),
     })
     set({ orders })
     get().pushActivity({
       actor: '物流',
       type: 'logistics',
-      content: `客户签收 ${actual}${line.unit}`,
+      content: `客户签收 ${signQty}${line.unit}`,
     })
   },
 
@@ -489,11 +529,10 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
         .find(
           (l) =>
             l.isShortage &&
-            l.expectedFulfillQty > 0 &&
             l.signoffStatus !== 'signed' &&
-            ['await_logistics', 'ready_for_po'].includes(l.status)
+            ['await_logistics'].includes(l.status)
         )
-      if (pending) get().applySignoff(pending.id)
+      if (pending) get().applySignoff(pending.id, pending.gap)
     }, 12000)
     set({ signoffTimerId: id })
   },
@@ -506,47 +545,12 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
 
   pushActivity: (event) =>
     set((s) => ({
-      activityEvents: [
-        ...s.activityEvents,
-        { ...event, id: uid(), timestamp: nowTime() },
-      ],
+      activityEvents: [...s.activityEvents, { ...event, id: uid(), timestamp: nowTime() }],
     })),
 
   setToast: (msg) => {
     set({ toast: msg })
     if (msg) setTimeout(() => set({ toast: null }), 2800)
-  },
-
-  openOverlay: (view) => {
-    if (view !== 'ops_chat') {
-      const tasks = getTasksForFlowKind(get().orders, view)
-      if (tasks.length === 0) {
-        get().setToast('当前无待办任务')
-        return
-      }
-      set({
-        overlayView: view,
-        selectedTaskLineId: tasks[0].lineId,
-      })
-      return
-    }
-    set({ overlayView: view, selectedTaskLineId: null })
-  },
-
-  closeOverlay: () => set({ overlayView: null, selectedTaskLineId: null }),
-
-  openTaskFlow: (kind) => get().openOverlay(kind),
-
-  closeTaskFlow: () => get().closeOverlay(),
-
-  checkTaskFlowComplete: () => {
-    const { overlayView, orders } = get()
-    if (!overlayView || overlayView === 'ops_chat') return
-    const remaining = getTasksForFlowKind(orders, overlayView)
-    if (remaining.length === 0) {
-      get().setToast('全部待办已完成')
-      get().closeOverlay()
-    }
   },
 
   resetMobileAgentSession: () =>
@@ -561,75 +565,13 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     set((s) => ({
       mobileChatMessages: [
         ...s.mobileChatMessages,
-        {
-          ...msg,
-          id: uid(),
-          timestamp: nowTime(),
-        },
+        { ...msg, id: uid(), timestamp: nowTime() },
       ],
     })),
 
   setActiveTask: (lineId) => set({ activeTaskLineId: lineId }),
-
   setMobileAgentPhase: (phase) => set({ mobileAgentPhase: phase }),
-
   setMobileTaskDisplayIndex: (index) => set({ mobileTaskDisplayIndex: index }),
-
-  completeActiveMobileTask: (payload) => {
-    const { activeTaskLineId, orders, role } = get()
-    if (!activeTaskLineId || role === 'ops') return false
-
-    const ctx = orders
-      .flatMap((o) => o.lines.map((l) => ({ ...l, po: o })))
-      .find((l) => l.id === activeTaskLineId)
-    if (!ctx) return false
-
-    if (role === 'sales' && payload.fulfillmentMethod) {
-      get().setFulfillmentMethod(
-        activeTaskLineId,
-        payload.fulfillmentMethod,
-        payload.salesNote ?? ''
-      )
-      return true
-    }
-
-    if (role === 'procurement') {
-      if (payload.opsAdvice !== undefined) {
-        get().setOpsAdvice(activeTaskLineId, payload.opsAdvice)
-        return true
-      }
-
-      if (payload.supplierIndex !== undefined) {
-        const line = ensureLineSuppliers(ctx)
-        const supplier = line.recommendedSuppliers[payload.supplierIndex]
-        if (!supplier) return false
-        const amount = Math.round(ctx.gap * ctx.unitPrice * 0.9)
-        get().applyCustomSupplier(activeTaskLineId, supplier.name, amount, supplier.id)
-
-        if (ctx.fulfillmentMethod === 'must_on_time') {
-          const updated = get()
-            .orders.flatMap((o) => o.lines)
-            .find((l) => l.id === activeTaskLineId)
-          if (updated?.supplierName) {
-            get().submitOaApproval(activeTaskLineId)
-            window.setTimeout(() => {
-              const cur = get().orders.flatMap((o) => o.lines).find((l) => l.id === activeTaskLineId)
-              if (cur?.oaApprovalStatus === 'approved' && !cur.procurementConfirmed) {
-                get().generateProcurementDraft(activeTaskLineId)
-                get().confirmProcurementToErp(activeTaskLineId)
-              }
-            }, 3000)
-          }
-        } else {
-          get().generateProcurementDraft(activeTaskLineId)
-          get().confirmProcurementToErp(activeTaskLineId)
-        }
-        return true
-      }
-    }
-
-    return false
-  },
 
   setMobileOnboardingPhase: (phase) => set({ mobileOnboardingPhase: phase }),
 
@@ -644,7 +586,6 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       mobileAgentPhase: 'idle',
       mobileTaskDisplayIndex: 0,
     })
-
     get().appendMobileChat({
       side: 'agent',
       content: '',
@@ -654,11 +595,15 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     })
   },
 
-  openMobileDashboardSheet: () => set({ mobileDashboardOpen: true }),
+  openMobileDashboardSheet: () => set({ mobileDashboardOpen: true, mobileKpiDetailKind: null }),
   closeMobileDashboardSheet: () => set({ mobileDashboardOpen: false }),
+  openMobileKpiDetailSheet: (kind) =>
+    set({ mobileKpiDetailKind: kind, mobileDashboardOpen: false }),
+  closeMobileKpiDetailSheet: () => set({ mobileKpiDetailKind: null }),
   openMobileTaskListSheet: () => set({ mobileTaskListOpen: true }),
   closeMobileTaskListSheet: () => set({ mobileTaskListOpen: false }),
-  openMobilePipelineStageSheet: (stageKey) =>
-    set({ mobilePipelineStageKey: stageKey, mobileTaskListOpen: false }),
-  closeMobilePipelineStageSheet: () => set({ mobilePipelineStageKey: null }),
+  openMobileSalesHotelOverview: () =>
+    set({ mobileSalesHotelOverviewOpen: true, mobileKpiDetailKind: null }),
+  closeMobileSalesHotelOverview: () => set({ mobileSalesHotelOverviewOpen: false }),
+  setProcurementListSort: (sort) => set({ procurementListSort: sort }),
 }))
