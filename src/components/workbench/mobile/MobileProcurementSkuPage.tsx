@@ -1,18 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import type { ProcurementPoFormState } from '../../../types/shortage'
-import { getProcurementSkuGroup } from '../../../utils/shortageAggregations'
 import {
-  buildAiBulkFillForms,
-  buildAiSinglePoFillForm,
-  findBulkCoverSupplier,
-  findSupplierForGap,
-  formatAiFillSummary,
-  formatAiSinglePoFillSummary,
-  getDemoProcurementVoiceTranscript,
-  getDemoSinglePoVoiceTranscript,
-} from '../../../utils/procurementAiFill'
-import { createPoFormState, resolveActualFulfillQty } from '../../../utils/procurementFormDefaults'
+  getProcurementSkuGroupForPage,
+  getProcurementSkuOaBucket,
+} from '../../../utils/shortageAggregations'
+import { formatSkuProductTitle } from '../../../utils/productDisplay'
+import {
+  createPoFormState,
+  isProcurementPoFormReadyToMirror,
+  pickProcurementPoMirrorFields,
+  resolveActualFulfillQty,
+} from '../../../utils/procurementFormDefaults'
 import {
   buildPoFormStateFromOrders,
   buildProcurementOaPoOverlayModel,
@@ -20,17 +19,15 @@ import {
 } from '../../../utils/procurementOaPreview'
 import { MobileProcurementOaPoOverlay } from './MobileProcurementOaPoOverlay'
 import { MobileProcurementPoRow } from './MobileProcurementPoRow'
-import { MobileVoiceListeningBar } from './MobileVoiceListeningBar'
 
 type MobileProcurementSkuPageProps = {
   sku: string
 }
 
-type VoiceTarget = 'bulk' | string
-
 export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps) {
   const orders = useShortageStore((s) => s.orders)
   const procurementOaPreview = useShortageStore((s) => s.procurementOaPreview)
+  const procurementSkuReadOnly = useShortageStore((s) => s.procurementSkuReadOnly)
   const closeProcurementSkuPage = useShortageStore((s) => s.closeProcurementSkuPage)
   const submitProcurementSkuBatch = useShortageStore((s) => s.submitProcurementSkuBatch)
   const setToast = useShortageStore((s) => s.setToast)
@@ -39,7 +36,23 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
   const oaPreviewRejected = procurementOaPreview === 'rejected'
   const oaPreviewMode = procurementOaPreview != null
 
-  const group = useMemo(() => getProcurementSkuGroup(orders, sku), [orders, sku])
+  const group = useMemo(() => getProcurementSkuGroupForPage(orders, sku), [orders, sku])
+
+  const oaBucket = useMemo(
+    () => (group ? getProcurementSkuOaBucket(group, orders) : 'none'),
+    [group, orders]
+  )
+
+  const formReadOnly = oaPreviewApproved || procurementSkuReadOnly
+
+  const poRowsByDdl = useMemo(() => {
+    if (!group) return []
+    return [...group.hotelRows].sort(
+      (a, b) =>
+        a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate) ||
+        a.lineId.localeCompare(b.lineId)
+    )
+  }, [group])
 
   const unitPrice = useMemo(() => {
     const line = orders.flatMap((o) => o.lines).find((l) => l.sku === sku)
@@ -49,13 +62,7 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
   const [forms, setForms] = useState<Record<string, ProcurementPoFormState>>({})
   const [submitSuccessOpen, setSubmitSuccessOpen] = useState(false)
   const [oaOverlayDismissed, setOaOverlayDismissed] = useState(false)
-  const [voiceTarget, setVoiceTarget] = useState<VoiceTarget | null>(null)
-  const [voiceTranscript, setVoiceTranscript] = useState('')
-  const streamTimerRef = useRef<number | null>(null)
-  const finishTimerRef = useRef<number | null>(null)
   const seededSkuRef = useRef<string | null>(null)
-
-  const voiceListening = voiceTarget != null
 
   /** 仅进入新品项页时初始化；orders 后台更新不再覆盖已填表单 */
   useEffect(() => {
@@ -66,7 +73,9 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
     }
     if (seededSkuRef.current === sku) return
     seededSkuRef.current = sku
-    const map = oaPreviewMode
+    const seedFromOrders =
+      oaPreviewMode || procurementSkuReadOnly || oaBucket === 'rejected'
+    const map = seedFromOrders
       ? buildPoFormStateFromOrders(group, orders)
       : (() => {
           const next: Record<string, ProcurementPoFormState> = {}
@@ -77,98 +86,7 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
         })()
     setForms(map)
     setOaOverlayDismissed(false)
-  }, [group, sku, unitPrice, oaPreviewMode, orders])
-
-  const clearVoiceTimers = useCallback(() => {
-    if (streamTimerRef.current != null) {
-      window.clearInterval(streamTimerRef.current)
-      streamTimerRef.current = null
-    }
-    if (finishTimerRef.current != null) {
-      window.clearTimeout(finishTimerRef.current)
-      finishTimerRef.current = null
-    }
-  }, [])
-
-  useEffect(() => () => clearVoiceTimers(), [clearVoiceTimers])
-
-  const finishVoiceFill = useCallback(
-    (target: VoiceTarget) => {
-      if (!group) return
-      clearVoiceTimers()
-      setVoiceTarget(null)
-      setVoiceTranscript('')
-
-      if (target === 'bulk') {
-        const result = buildAiBulkFillForms(group, sku, unitPrice)
-        if (!result) {
-          setToast('未找到库存充足的供应商，请手动填写')
-          return
-        }
-        setForms(result.forms)
-        setToast(formatAiFillSummary(group, result.supplier))
-        return
-      }
-
-      const row = group.hotelRows.find((r) => r.lineId === target)
-      if (!row) return
-
-      const result = buildAiSinglePoFillForm(row, sku, unitPrice)
-      if (!result) {
-        setToast(`未找到可覆盖 ${row.gap}${row.unit} 的供应商，请手动填写`)
-        return
-      }
-      setForms((prev) => ({ ...prev, [row.lineId]: result.form }))
-      setToast(formatAiSinglePoFillSummary(row, result.supplier))
-    },
-    [clearVoiceTimers, group, setToast, sku, unitPrice]
-  )
-
-  const startVoiceListening = useCallback(
-    (target: VoiceTarget) => {
-      if (!group || voiceListening) return
-
-      let fullText = '帮我填写采购方案'
-      if (target === 'bulk') {
-        const supplier = findBulkCoverSupplier(sku, group.totalGap, unitPrice)
-        fullText = supplier
-          ? getDemoProcurementVoiceTranscript(group, supplier.name, supplier.unitPrice)
-          : '帮我查一下有没有供应商能覆盖全部缺货'
-      } else {
-        const row = group.hotelRows.find((r) => r.lineId === target)
-        if (row) {
-          const supplier = findSupplierForGap(sku, row.gap, unitPrice)
-          fullText = supplier
-            ? getDemoSinglePoVoiceTranscript(row, supplier.name, supplier.unitPrice)
-            : `${row.hotelName}有没有供应商能供货`
-        }
-      }
-
-      clearVoiceTimers()
-      setVoiceTarget(target)
-      setVoiceTranscript('')
-
-      let index = 0
-      streamTimerRef.current = window.setInterval(() => {
-        index += 1
-        setVoiceTranscript(fullText.slice(0, index))
-        if (index >= fullText.length) {
-          if (streamTimerRef.current != null) {
-            window.clearInterval(streamTimerRef.current)
-            streamTimerRef.current = null
-          }
-          finishTimerRef.current = window.setTimeout(() => {
-            finishVoiceFill(target)
-          }, 400)
-        }
-      }, 70)
-    },
-    [clearVoiceTimers, finishVoiceFill, group, sku, unitPrice, voiceListening]
-  )
-
-  const handleVoiceStop = () => {
-    if (voiceTarget) finishVoiceFill(voiceTarget)
-  }
+  }, [group, sku, unitPrice, oaPreviewMode, procurementSkuReadOnly, oaBucket, orders])
 
   const oaOverlayModel = useMemo(() => {
     if (!group || !procurementOaPreview) return null
@@ -197,13 +115,34 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
   const showOaOverlay = oaPreviewMode && oaOverlayModel != null && !oaOverlayDismissed
   const oaReopenLabel = oaPreviewApproved ? '查看采购订单' : '查看原采购订单'
 
+  const firstPoLineId = poRowsByDdl[0]?.lineId
+
   const patchForm = (lineId: string, patch: Partial<ProcurementPoFormState>) => {
-    if (oaPreviewApproved) return
+    if (formReadOnly) return
     setForms((prev) => {
       const row = group.hotelRows.find((r) => r.lineId === lineId)
       if (!row) return prev
       const base = prev[lineId] ?? createPoFormState(row, sku, unitPrice)
-      return { ...prev, [lineId]: { ...base, ...patch } }
+      const updated: Record<string, ProcurementPoFormState> = {
+        ...prev,
+        [lineId]: { ...base, ...patch },
+      }
+
+      if (
+        lineId === firstPoLineId &&
+        poRowsByDdl.length > 1 &&
+        isProcurementPoFormReadyToMirror(updated[lineId])
+      ) {
+        const mirror = pickProcurementPoMirrorFields(updated[lineId])
+        for (const other of poRowsByDdl.slice(1)) {
+          const otherBase =
+            updated[other.lineId] ??
+            createPoFormState(other, sku, unitPrice)
+          updated[other.lineId] = { ...otherBase, ...mirror }
+        }
+      }
+
+      return updated
     })
   }
 
@@ -216,8 +155,12 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
         fulfillmentMode: form.fulfillmentMode,
         supplierName: form.supplierName,
         price: Number(form.price),
-        eta: form.fulfillmentMode === 'urgent' ? form.eta : undefined,
+        eta: form.eta,
         deliveryMethod: form.deliveryMethod,
+        logisticsTrackingNo:
+          form.fulfillmentMode === 'urgent' && form.deliveryMethod === 'direct'
+            ? form.logisticsTrackingNo.trim()
+            : undefined,
         actualFulfillQty: resolveActualFulfillQty(form.fulfillmentMode, row.gap),
       }
     })
@@ -241,7 +184,7 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
 
   return (
     <div
-      className={`mobile-procurement-page${voiceListening ? ' mobile-procurement-page--voice' : ''}${oaPreviewMode ? ' mobile-procurement-page--oa-preview' : ''}${oaPreviewRejected ? ' mobile-procurement-page--oa-rejected' : ''}${showOaOverlay ? ' mobile-procurement-page--oa-open' : ''}${oaPreviewRejected ? ' mobile-procurement-page--has-footer' : ''}`}
+      className={`mobile-procurement-page${oaPreviewMode ? ' mobile-procurement-page--oa-preview' : ''}${oaPreviewRejected ? ' mobile-procurement-page--oa-rejected' : ''}${showOaOverlay ? ' mobile-procurement-page--oa-open' : ''}${oaPreviewRejected ? ' mobile-procurement-page--has-footer' : ''}`}
     >
       <header className="mobile-procurement-page__header">
         <button
@@ -253,54 +196,38 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
           ‹
         </button>
         <div className="mobile-procurement-page__head-text">
-          <h1 className="mobile-procurement-page__title">{group.productName}</h1>
+          <h1 className="mobile-procurement-page__title">
+            {formatSkuProductTitle(group.productName, group.spec)}
+          </h1>
           <p className="mobile-procurement-page__meta">
-            {group.spec} · 共缺 {group.totalGap}
-            {group.unit} · {group.hotelCount} 家客户 · 北京市
+            共缺 {group.totalGap}
+            {group.unit} · {group.lineCount} 个 PO · 北京市
           </p>
         </div>
       </header>
 
       <div className="mobile-procurement-page__body">
-        {!oaPreviewApproved ? (
-          <div className="mobile-procurement-page__hint-row">
-            <p className="mobile-procurement-page__hint">
-              {oaPreviewRejected
-                ? '请根据驳回原因修改各 PO 后重新提交 OA'
-                : '需全部填写后提交审批；右侧可整批语音填入，各 PO 也可单独语音填入'}
-            </p>
-            {!oaPreviewMode ? (
-              <button
-                type="button"
-                className="mobile-procurement-page__ai-btn"
-                onClick={() => startVoiceListening('bulk')}
-                disabled={voiceListening}
-              >
-                <span className="mobile-procurement-page__ai-icon" aria-hidden>
-                  🎙
-                </span>
-                AI语音填入
-              </button>
-            ) : null}
-          </div>
-        ) : (
+        {formReadOnly ? (
           <p className="mobile-procurement-page__hint mobile-procurement-page__hint--readonly">
-            OA 已通过，采购订单已生成，以下信息仅供查看
+            {oaPreviewApproved || oaBucket === 'approved'
+              ? 'OA 已通过，采购订单已生成，以下信息仅供查看'
+              : 'OA 审批中，以下信息仅供查看'}
+          </p>
+        ) : (
+          <p className="mobile-procurement-page__hint">
+            {oaPreviewRejected || oaBucket === 'rejected'
+              ? '请根据驳回原因修改各 PO 后重新提交 OA'
+              : '需为每个 PO 选择履约方式并填写后提交'}
           </p>
         )}
-        {group.hotelRows.map((row) => (
+        {poRowsByDdl.map((row) => (
           <MobileProcurementPoRow
             key={row.lineId}
             row={row}
-            form={
-              forms[row.lineId] ??
-              createPoFormState(row, sku, unitPrice)
-            }
+            sku={sku}
+            form={forms[row.lineId] ?? createPoFormState(row, sku, unitPrice)}
             onChange={(patch) => patchForm(row.lineId, patch)}
-            onVoiceFill={oaPreviewApproved ? undefined : () => startVoiceListening(row.lineId)}
-            voiceActive={voiceTarget === row.lineId}
-            voiceDisabled={voiceListening && voiceTarget !== row.lineId}
-            readOnly={oaPreviewApproved}
+            readOnly={formReadOnly}
           />
         ))}
       </div>
@@ -332,9 +259,7 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
         )
       ) : null}
 
-      {voiceListening ? (
-        <MobileVoiceListeningBar transcript={voiceTranscript} onStop={handleVoiceStop} />
-      ) : !oaPreviewApproved ? (
+      {!formReadOnly ? (
         <footer className="mobile-procurement-page__footer">
           <button type="button" className="procurement-sku-card__submit" onClick={handleSubmit}>
             确认并提交到采购订单与OA流程

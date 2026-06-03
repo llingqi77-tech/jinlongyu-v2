@@ -44,6 +44,7 @@ export function withLineDefaults(
     procurementMode: 'pending',
     status: 'new',
     opsPoNumber: '',
+    logisticsTrackingNo: '',
     salesProcurementNotifiedAt: '',
     id: partial.id,
     sku: partial.sku,

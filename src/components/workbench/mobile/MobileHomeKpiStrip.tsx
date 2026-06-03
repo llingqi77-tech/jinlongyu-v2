@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import type { MobileKpiKind } from '../../../types/shortage'
+import { sendFulfillmentPanelAction } from '../../../utils/mobileAgentDialogue'
+import { FULFILLMENT_CMD_PREFIX } from '../../../utils/mobileFulfillmentData'
 import { getMobileHomeKpis } from '../../../utils/mobileAgentSummary'
 
 const KPI_ITEMS: Array<{
@@ -8,7 +10,7 @@ const KPI_ITEMS: Array<{
   label: string
   dim: string
   accent?: boolean
-  countKey: 'shortageLineCount' | 'procurementSubmittedCount' | 'logisticsClosedCount'
+  countKey: 'shortageLineCount' | 'procurementSubmittedCount'
 }> = [
   { kind: 'shortage', label: '今日缺货品', dim: '品', countKey: 'shortageLineCount' },
   {
@@ -18,13 +20,11 @@ const KPI_ITEMS: Array<{
     accent: true,
     countKey: 'procurementSubmittedCount',
   },
-  { kind: 'logistics', label: '物流已闭环', dim: 'PO', countKey: 'logisticsClosedCount' },
 ]
 
 export function MobileHomeKpiStrip() {
   const orders = useShortageStore((s) => s.orders)
   const role = useShortageStore((s) => s.role)
-  const openDashboard = useShortageStore((s) => s.openMobileDashboardSheet)
   const openKpiDetail = useShortageStore((s) => s.openMobileKpiDetailSheet)
 
   const kpis = useMemo(() => getMobileHomeKpis(orders, role), [orders, role])
@@ -34,7 +34,9 @@ export function MobileHomeKpiStrip() {
       <button
         type="button"
         className="mobile-kpi-panel__dashboard-bar"
-        onClick={openDashboard}
+        onClick={() =>
+          sendFulfillmentPanelAction('缺货品履约数据', `${FULFILLMENT_CMD_PREFIX}open`)
+        }
         aria-label="打开缺货品履约数据"
       >
         缺货品履约数据

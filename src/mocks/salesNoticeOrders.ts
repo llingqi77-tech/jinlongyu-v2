@@ -4,6 +4,8 @@ import { getRecommendedSuppliers } from '../utils/supplierRecommendations'
 import { withLineDefaults } from '../utils/shortageLineDefaults'
 
 const TODAY = addCalendarDays(new Date(), 0)
+const IN_TWO_DAYS = addCalendarDays(new Date(), 2)
+const IN_FOUR_DAYS = addCalendarDays(new Date(), 4)
 
 /** 同一品项一次采购更新共用时间戳，用于销售按品聚合通知 */
 const SKU_NOTIFY_AT: Record<string, string> = {
@@ -20,7 +22,7 @@ function notifyAtForSku(sku: string): string {
   return SKU_NOTIFY_AT[sku] ?? '2026-06-02T09:00:00.000Z'
 }
 
-function deferLine(seed: LineSeed): ShortagePOLine {
+function deferLine(seed: LineSeed & { eta?: string }): ShortagePOLine {
   return withLineDefaults({
     spec: '5L/桶',
     quantity: seed.gap + 10,
@@ -28,7 +30,9 @@ function deferLine(seed: LineSeed): ShortagePOLine {
     lineAmount: 0,
     fulfillmentMethod: 'defer',
     procurementOutcome: 'not_satisfied',
+    procurementMode: 'normal',
     status: 'await_logistics',
+    eta: seed.eta ?? IN_TWO_DAYS,
     salesProcurementNotifiedAt: seed.salesProcurementNotifiedAt ?? notifyAtForSku(seed.sku),
     ...seed,
   })
@@ -88,6 +92,7 @@ export const MOCK_SALES_NOTICE_ORDERS: ShortagePO[] = [
         spec: '5L/桶',
         gap: 30,
         unit: '桶',
+        eta: IN_FOUR_DAYS,
       }),
       urgentLine({
         id: 'L-SN-002',
@@ -105,6 +110,7 @@ export const MOCK_SALES_NOTICE_ORDERS: ShortagePO[] = [
         spec: '1.8L/瓶',
         gap: 24,
         unit: '瓶',
+        eta: IN_TWO_DAYS,
       }),
       pendingLine({
         id: 'L-SN-004',

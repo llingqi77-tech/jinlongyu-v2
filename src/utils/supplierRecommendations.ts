@@ -34,3 +34,9 @@ export function getLastPurchasePrice(sku: string, unitPrice: number): number {
   const offset = (hashSku(sku) % 5) - 2
   return Math.max(1, unitPrice + offset)
 }
+
+/** 演示：供应商常规供货周期（天） */
+export function getSupplierLeadTimeDays(sku: string, supplierName: string): number {
+  if (!supplierName.trim()) return 5
+  return 3 + (hashSku(`${sku}::${supplierName}`) % 5)
+}

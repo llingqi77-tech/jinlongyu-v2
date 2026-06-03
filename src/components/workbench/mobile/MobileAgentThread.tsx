@@ -2,23 +2,45 @@ import { useEffect, useRef, useState } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import { sendMobileAgentMessage } from '../../../utils/mobileAgentDialogue'
 import { ChatMessageRow } from '../shared/ChatMessageRow'
+import { StreamingText } from '../shared/StreamingText'
 import { MobileChatMessageGrid } from './MobileChatMessageGrid'
 import { MobileOrderInfoCard } from './MobileOrderInfoCard'
+import { MobileFulfillmentDataPanel } from './MobileFulfillmentDataPanel'
+import { MobileSalesHotelDataPanel } from './MobileSalesHotelDataPanel'
 import { MobileShortageHome } from './MobileShortageHome'
 
 export function MobileAgentThread() {
   const messages = useShortageStore((s) => s.mobileChatMessages)
+  const scrollToTopNonce = useShortageStore((s) => s.mobileChatScrollToTopNonce)
   const threadRef = useRef<HTMLDivElement>(null)
   const [streamingId, setStreamingId] = useState<string | null>(null)
   const prevCountRef = useRef(0)
+  const scrollMessageCountRef = useRef(0)
 
   useEffect(() => {
     const el = threadRef.current
     if (!el) return
+
+    const prevLen = scrollMessageCountRef.current
+    const messageAdded = messages.length > prevLen
+    scrollMessageCountRef.current = messages.length
+    if (!messageAdded) return
+
     const welcomeOnly =
       messages.length === 1 && messages[0]?.kind === 'welcome_card' && messages[0]?.side === 'agent'
-    el.scrollTop = welcomeOnly ? 0 : el.scrollHeight
+    const defaultEntryPanel =
+      messages.length === 1 &&
+      messages[0]?.side === 'agent' &&
+      (messages[0]?.kind === 'sales_hotel_data_panel' ||
+        messages[0]?.kind === 'fulfillment_data_panel')
+    el.scrollTop = welcomeOnly || defaultEntryPanel ? 0 : el.scrollHeight
   }, [messages, streamingId])
+
+  useEffect(() => {
+    const el = threadRef.current
+    if (!el || scrollToTopNonce === 0) return
+    el.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [scrollToTopNonce])
 
   useEffect(() => {
     if (messages.length <= prevCountRef.current) {
@@ -44,6 +66,48 @@ export function MobileAgentThread() {
               ) : null}
               <MobileShortageHome />
             </div>
+          )
+        }
+
+        if (msg.kind === 'sales_hotel_data_panel' && msg.side === 'agent' && msg.meta?.salesHotelPanel) {
+          return (
+            <MobileChatMessageGrid key={msg.id} side="agent" time={msg.timestamp}>
+              <div className="chat-message__bubble chat-message__bubble--agent chat-message__bubble--card">
+                {msg.content ? (
+                  <p className="mobile-sales-hotel-panel__intro">
+                    <StreamingText
+                      text={msg.content}
+                      active={msg.id === streamingId}
+                      onComplete={() => {
+                        if (msg.id === streamingId) setStreamingId(null)
+                      }}
+                    />
+                  </p>
+                ) : null}
+                <MobileSalesHotelDataPanel panel={msg.meta.salesHotelPanel} />
+              </div>
+            </MobileChatMessageGrid>
+          )
+        }
+
+        if (msg.kind === 'fulfillment_data_panel' && msg.side === 'agent' && msg.meta?.fulfillmentPanel) {
+          return (
+            <MobileChatMessageGrid key={msg.id} side="agent" time={msg.timestamp}>
+              <div className="chat-message__bubble chat-message__bubble--agent chat-message__bubble--card">
+                {msg.content ? (
+                  <p className="mobile-fulfillment-panel__intro">
+                    <StreamingText
+                      text={msg.content}
+                      active={msg.id === streamingId}
+                      onComplete={() => {
+                        if (msg.id === streamingId) setStreamingId(null)
+                      }}
+                    />
+                  </p>
+                ) : null}
+                <MobileFulfillmentDataPanel panel={msg.meta.fulfillmentPanel} />
+              </div>
+            </MobileChatMessageGrid>
           )
         }
 
@@ -78,7 +142,9 @@ export function MobileAgentThread() {
               !isUser &&
               msg.id === streamingId &&
               msg.kind !== 'welcome_card' &&
-              msg.kind !== 'order_info'
+              msg.kind !== 'order_info' &&
+              msg.kind !== 'fulfillment_data_panel' &&
+              msg.kind !== 'sales_hotel_data_panel'
             }
             onStreamComplete={() => {
               if (msg.id === streamingId) setStreamingId(null)

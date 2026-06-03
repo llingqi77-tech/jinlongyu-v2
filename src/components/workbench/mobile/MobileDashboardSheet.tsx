@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import { getMobileHomeKpis, getRoleTasksSorted } from '../../../utils/mobileAgentSummary'
-import { getLogisticsClosedDetailGroups, getOpsCreateSummary } from '../../../utils/shortageAggregations'
+import { getOpsCreateSummary } from '../../../utils/shortageAggregations'
 import { MobileHomeKpiStrip } from './MobileHomeKpiStrip'
 
 export function MobileDashboardSheet() {
@@ -13,11 +13,6 @@ export function MobileDashboardSheet() {
   const kpis = useMemo(() => getMobileHomeKpis(orders, role), [orders, role])
   const opsSummary = useMemo(() => getOpsCreateSummary(orders), [orders])
   const tasks = useMemo(() => getRoleTasksSorted(orders, role), [orders, role])
-
-  const closedPoCount = useMemo(
-    () => getLogisticsClosedDetailGroups(orders, new Date(), role).length,
-    [orders, role]
-  )
 
   if (!open) return null
 
@@ -41,10 +36,6 @@ export function MobileDashboardSheet() {
             <div>
               <dt>采购已提交（品）</dt>
               <dd>{kpis.procurementSubmittedCount} 个</dd>
-            </div>
-            <div>
-              <dt>物流已闭环（PO）</dt>
-              <dd>{closedPoCount} 张</dd>
             </div>
             <div>
               <dt>涉及 SKU</dt>

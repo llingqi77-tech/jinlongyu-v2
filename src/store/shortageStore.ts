@@ -8,13 +8,24 @@ import type {
   MobileChatMessage,
   MobileOnboardingPhase,
   ProcurementOaPreviewOutcome,
+  SalesHotelDataPanelState,
   ShortagePO,
   SubmitProcurementPayload,
   SubmitProcurementSkuBatchPayload,
   WorkbenchRole,
   MobileKpiKind,
 } from '../types/shortage'
+import { appendAgentReply } from '../utils/mobileChatReplies'
 import { getMobileHomeKpis, getRoleTasksSorted } from '../utils/mobileAgentSummary'
+import type {
+  MobileProcurementQuickView,
+  MobileSalesQuickView,
+} from '../utils/mobileQuickActions'
+import {
+  FULFILLMENT_CMD_PREFIX,
+  fulfillmentReplyForCommand,
+} from '../utils/mobileFulfillmentData'
+import { SALES_HOTEL_CMD_PREFIX, salesHotelReplyForCommand } from '../utils/mobileSalesHotelData'
 import {
   applyBackendLogisticsRouting,
   ensureLineSuppliers,
@@ -58,15 +69,19 @@ export interface ShortageState {
   mobileTaskDisplayIndex: number
   expandedSku: string | null
   procurementActiveSku: string | null
+  procurementSkuReadOnly: boolean
   procurementOaPreview: ProcurementOaPreviewOutcome | null
   procurementListSort: ProcurementListSort | null
+  mobileSalesQuickView: MobileSalesQuickView | null
+  mobileProcurementQuickView: MobileProcurementQuickView | null
+  mobileChatScrollToTopNonce: number
 
   openWorkbench: () => void
   closeWorkbench: () => void
   setRole: (role: WorkbenchRole) => void
   selectTaskLine: (lineId: string | null) => void
   setExpandedSku: (sku: string | null) => void
-  openProcurementSkuPage: (sku: string) => void
+  openProcurementSkuPage: (sku: string, options?: { readOnly?: boolean }) => void
   closeProcurementSkuPage: () => void
   enterProcurementOaNotifyPreview: (outcome: ProcurementOaPreviewOutcome) => void
   loadTodayShortages: () => void
@@ -83,6 +98,11 @@ export interface ShortageState {
   setToast: (msg: string | null) => void
   resetMobileAgentSession: () => void
   appendMobileChat: (msg: Omit<MobileChatMessage, 'id' | 'timestamp'>) => void
+  patchSalesHotelPanelMessage: (
+    messageId: string,
+    content: string,
+    panel: SalesHotelDataPanelState
+  ) => void
   setActiveTask: (lineId: string | null) => void
   setMobileAgentPhase: (phase: MobileAgentPhase) => void
   setMobileTaskDisplayIndex: (index: number) => void
@@ -97,6 +117,9 @@ export interface ShortageState {
   openMobileSalesHotelOverview: () => void
   closeMobileSalesHotelOverview: () => void
   setProcurementListSort: (sort: ProcurementListSort | null) => void
+  setMobileSalesQuickView: (view: MobileSalesQuickView | null) => void
+  setMobileProcurementQuickView: (view: MobileProcurementQuickView) => void
+  bumpMobileChatScrollToTop: () => void
 }
 
 function patchLine(
@@ -142,8 +165,12 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
   mobileTaskDisplayIndex: 0,
   expandedSku: null,
   procurementActiveSku: null,
+  procurementSkuReadOnly: false,
   procurementOaPreview: null,
   procurementListSort: null,
+  mobileSalesQuickView: null,
+  mobileProcurementQuickView: null,
+  mobileChatScrollToTopNonce: 0,
 
   openWorkbench: () => {
     const { signoffTimerId } = get()
@@ -163,8 +190,11 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       mobileTaskDisplayIndex: 0,
       expandedSku: null,
       procurementActiveSku: null,
+      procurementSkuReadOnly: false,
       procurementOaPreview: null,
       procurementListSort: null,
+      mobileSalesQuickView: null,
+      mobileProcurementQuickView: null,
     })
   },
 
@@ -185,8 +215,11 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       mobileTaskDisplayIndex: 0,
       expandedSku: null,
       procurementActiveSku: null,
+      procurementSkuReadOnly: false,
       procurementOaPreview: null,
       procurementListSort: null,
+      mobileSalesQuickView: null,
+      mobileProcurementQuickView: null,
     })
   },
 
@@ -200,25 +233,33 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       mobileTaskDisplayIndex: 0,
       expandedSku: null,
       procurementActiveSku: null,
+      procurementSkuReadOnly: false,
       procurementOaPreview: null,
       procurementListSort: null,
+      mobileSalesQuickView: null,
+      mobileProcurementQuickView: null,
     })
   },
 
   selectTaskLine: (lineId) => set({ selectedTaskLineId: lineId }),
   setExpandedSku: (sku) => set({ expandedSku: sku }),
 
-  openProcurementSkuPage: (sku) => set({ procurementActiveSku: sku, expandedSku: null }),
+  openProcurementSkuPage: (sku, options) =>
+    set({
+      procurementActiveSku: sku,
+      procurementSkuReadOnly: options?.readOnly ?? false,
+      expandedSku: null,
+    }),
 
   closeProcurementSkuPage: () => {
     const wasPreview = get().procurementOaPreview != null
     if (wasPreview) {
       get().loadTodayShortages()
-      set({ procurementActiveSku: null, procurementOaPreview: null })
+      set({ procurementActiveSku: null, procurementSkuReadOnly: false, procurementOaPreview: null })
       get().finishMobileActivation()
       return
     }
-    set({ procurementActiveSku: null, procurementOaPreview: null })
+    set({ procurementActiveSku: null, procurementSkuReadOnly: false, procurementOaPreview: null })
   },
 
   enterProcurementOaNotifyPreview: (outcome) => {
@@ -241,6 +282,8 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       procurementActiveSku: OA_NOTIFY_PREVIEW_SKU,
       procurementOaPreview: outcome,
       procurementListSort: null,
+      mobileSalesQuickView: null,
+      mobileProcurementQuickView: null,
     })
   },
 
@@ -336,9 +379,9 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     }
 
     for (const row of rows) {
-      if (row.fulfillmentMode === 'urgent') {
+      if (row.fulfillmentMode === 'urgent' || row.fulfillmentMode === 'defer') {
         if (!row.supplierName?.trim() || !row.eta || row.price == null || row.price <= 0) {
-          get().setToast('加急 PO 请填写供应商、价格与交期')
+          get().setToast('请填写供应商、采购价格与预计交货日期')
           return false
         }
       }
@@ -356,16 +399,18 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       productName = line.productName
 
       if (row.fulfillmentMode === 'defer') {
+        const supplier = getLastSupplierForPo(sku, found.po.id)
+        const price = row.price!
         orders = patchLine(orders, row.lineId, {
           procurementOutcome: 'not_satisfied',
           fulfillmentMethod: 'defer',
           procurementMode: 'normal',
           actualFulfillQty: 0,
-          supplierName: '',
-          selectedSupplierId: '',
-          amount: 0,
-          procurementPrice: 0,
-          eta: found.po.requiredDeliveryDate,
+          supplierName: row.supplierName!.trim(),
+          selectedSupplierId: supplier.id,
+          amount: Math.round(price * line.gap),
+          procurementPrice: price,
+          eta: row.eta!,
           deliveryMethod: null,
           oaApprovalStatus: 'none',
           oaRequestNo: '',
@@ -390,6 +435,8 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
         amount: Math.round(row.price! * row.actualFulfillQty),
         eta: row.eta!,
         deliveryMethod: row.deliveryMethod ?? 'warehouse',
+        logisticsTrackingNo:
+          row.deliveryMethod === 'direct' ? (row.logisticsTrackingNo?.trim() ?? '') : '',
         salesProcurementNotifiedAt: notifiedAt,
       })
       satisfiedLineIds.push(row.lineId)
@@ -569,6 +616,20 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       ],
     })),
 
+  patchSalesHotelPanelMessage: (messageId, content, panel) =>
+    set((s) => ({
+      mobileChatMessages: s.mobileChatMessages.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              content,
+              kind: 'sales_hotel_data_panel' as const,
+              meta: { ...m.meta, salesHotelPanel: panel },
+            }
+          : m
+      ),
+    })),
+
   setActiveTask: (lineId) => set({ activeTaskLineId: lineId }),
   setMobileAgentPhase: (phase) => set({ mobileAgentPhase: phase }),
   setMobileTaskDisplayIndex: (index) => set({ mobileTaskDisplayIndex: index }),
@@ -586,6 +647,24 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       mobileAgentPhase: 'idle',
       mobileTaskDisplayIndex: 0,
     })
+    if (role === 'sales') {
+      set({ mobileSalesQuickView: 'hotel_overview' })
+      const reply = salesHotelReplyForCommand(`${SALES_HOTEL_CMD_PREFIX}open`, get().orders)
+      if (reply) {
+        appendAgentReply(get(), { text: reply.text, salesHotelPanel: reply.panel }, true)
+      }
+      get().bumpMobileChatScrollToTop()
+      return
+    }
+    if (role === 'ops') {
+      const reply = fulfillmentReplyForCommand(`${FULFILLMENT_CMD_PREFIX}open`, get().orders)
+      if (reply) {
+        appendAgentReply(get(), { text: reply.text, fulfillmentPanel: reply.panel }, true)
+      }
+      get().bumpMobileChatScrollToTop()
+      return
+    }
+    set({ mobileProcurementQuickView: 'delivery', procurementListSort: 'delivery' })
     get().appendMobileChat({
       side: 'agent',
       content: '',
@@ -606,4 +685,13 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     set({ mobileSalesHotelOverviewOpen: true, mobileKpiDetailKind: null }),
   closeMobileSalesHotelOverview: () => set({ mobileSalesHotelOverviewOpen: false }),
   setProcurementListSort: (sort) => set({ procurementListSort: sort }),
+  setMobileSalesQuickView: (view) => set({ mobileSalesQuickView: view }),
+  setMobileProcurementQuickView: (view) =>
+    set(
+      view === 'fulfillment'
+        ? { mobileProcurementQuickView: view }
+        : { mobileProcurementQuickView: view, procurementListSort: view }
+    ),
+  bumpMobileChatScrollToTop: () =>
+    set((s) => ({ mobileChatScrollToTopNonce: s.mobileChatScrollToTopNonce + 1 })),
 }))

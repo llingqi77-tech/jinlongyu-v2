@@ -1,17 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import {
+  getOaProgressProcurementGroups,
   getPendingProcurementGroups,
   getProcurementSkuOaBucket,
   getProcurementSkuOaLabel,
+  isProcurementSkuAwaitingForm,
+  isProcurementSkuPageReadOnly,
   sortProcurementSkuGroups,
   type ProcurementListSort,
   type ProcurementSkuOaBucket,
 } from '../../../utils/shortageAggregations'
-import type { ProcurementSkuGroup } from '../../../types/shortage'
+import type { ProcurementSkuGroup, ProductCategoryKey } from '../../../types/shortage'
+import { formatSkuProductTitle } from '../../../utils/productDisplay'
+import { groupItemsByProductCategory } from '../../../utils/productCategory'
 
-const OA_TABS: { id: ProcurementSkuOaBucket; label: string }[] = [
-  { id: 'none', label: '新任务' },
+const OA_TABS: { id: Exclude<ProcurementSkuOaBucket, 'none'>; label: string }[] = [
   { id: 'rejected', label: '已驳回' },
   { id: 'pending', label: '审批中' },
   { id: 'approved', label: '已通过' },
@@ -21,23 +25,103 @@ export function MobileProcurementCardList() {
   const orders = useShortageStore((s) => s.orders)
   const sort = useShortageStore((s) => s.procurementListSort) ?? 'delivery'
   const openProcurementSkuPage = useShortageStore((s) => s.openProcurementSkuPage)
-  const [oaTab, setOaTab] = useState<ProcurementSkuOaBucket>('none')
+  const [oaTab, setOaTab] = useState<Exclude<ProcurementSkuOaBucket, 'none'>>('rejected')
+  const [categoryTab, setCategoryTab] = useState<ProductCategoryKey | null>(null)
 
   const sortByOa = sort === 'oa'
 
-  const groups = useMemo(() => {
-    const pending = getPendingProcurementGroups(orders)
+  const oaProgressGroups = useMemo(
+    () => (sortByOa ? getOaProgressProcurementGroups(orders) : []),
+    [orders, sortByOa]
+  )
+
+  const oaTabCounts = useMemo(() => {
+    const counts: Record<Exclude<ProcurementSkuOaBucket, 'none'>, number> = {
+      rejected: 0,
+      pending: 0,
+      approved: 0,
+    }
+    for (const g of oaProgressGroups) {
+      const bucket = getProcurementSkuOaBucket(g, orders)
+      if (bucket !== 'none') counts[bucket] += 1
+    }
+    return counts
+  }, [oaProgressGroups, orders])
+
+  const sortedGroups = useMemo(() => {
+    const source = sortByOa ? oaProgressGroups : getPendingProcurementGroups(orders)
     const list = sortByOa
-      ? pending.filter((g) => getProcurementSkuOaBucket(g, orders) === oaTab)
-      : pending
+      ? source.filter((g) => getProcurementSkuOaBucket(g, orders) === oaTab)
+      : source
     return sortProcurementSkuGroups(list, orders, sort)
-  }, [orders, sort, oaTab, sortByOa])
+  }, [orders, sort, oaTab, sortByOa, oaProgressGroups])
+
+  const taskGroups = useMemo(() => {
+    if (sortByOa) return sortedGroups
+    return sortedGroups.filter((g) => isProcurementSkuAwaitingForm(g, orders))
+  }, [sortedGroups, sortByOa, orders])
+
+  const categorySections = useMemo(() => {
+    if (sortByOa) return []
+    return groupItemsByProductCategory(taskGroups)
+  }, [taskGroups, sortByOa])
+
+  const taskCount = taskGroups.length
+
+  useEffect(() => {
+    if (sortByOa || categorySections.length === 0) {
+      setCategoryTab(null)
+      return
+    }
+    if (categoryTab == null || !categorySections.some((s) => s.key === categoryTab)) {
+      setCategoryTab(categorySections[0].key)
+    }
+  }, [categorySections, categoryTab, sortByOa])
+
+  const activeCategory =
+    categorySections.find((s) => s.key === categoryTab) ?? categorySections[0] ?? null
+
+  const displayGroups = sortByOa ? sortedGroups : (activeCategory?.items ?? [])
 
   const activeTabLabel = OA_TABS.find((t) => t.id === oaTab)?.label ?? ''
+  const titleId = sortByOa ? 'mobile-task-list-oa-title' : 'mobile-task-list-todo-title'
 
   return (
-    <section className="mobile-task-list-section" aria-label="任务清单">
-      <h2 className="mobile-task-list-section__title">任务清单</h2>
+    <div className="mobile-task-list-block">
+      <h2 id={titleId} className="mobile-task-list-block__title">
+        {sortByOa ? (
+          <>
+            OA进度
+            <span className="mobile-task-list-block__title-note">（只统计已提交的）</span>
+          </>
+        ) : (
+          '待办清单'
+        )}
+      </h2>
+      <section className="mobile-task-list-section" aria-labelledby={titleId}>
+        {!sortByOa && taskCount > 0 ? (
+          <div
+            className="mobile-task-list-section__category-tabs"
+            role="tablist"
+            aria-label="品类"
+          >
+            {categorySections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                role="tab"
+                aria-selected={categoryTab === section.key}
+                className={`mobile-task-list-section__category-tab${
+                  categoryTab === section.key ? ' mobile-task-list-section__category-tab--active' : ''
+                }`}
+                onClick={() => setCategoryTab(section.key)}
+              >
+                {section.label}
+                <span className="mobile-task-list-section__category-count">{section.items.length}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
       {sortByOa ? (
         <div className="mobile-task-list-section__tabs" role="tablist" aria-label="OA 状态">
           {OA_TABS.map((tab) => (
@@ -50,29 +134,35 @@ export function MobileProcurementCardList() {
               onClick={() => setOaTab(tab.id)}
             >
               {tab.label}
+              <span className="mobile-task-list-section__tab-count">{oaTabCounts[tab.id]}</span>
             </button>
           ))}
         </div>
       ) : null}
-      {groups.length === 0 ? (
+      {taskCount === 0 ? (
         <p className="mobile-shortage-home__empty">
-          {sortByOa ? `${activeTabLabel}暂无待处理品项。` : '今日暂无待处理缺货品项。'}
+          {sortByOa ? `${activeTabLabel}暂无已提交品项。` : '今日暂无待处理缺货品项。'}
         </p>
-      ) : (
+      ) : displayGroups.length > 0 ? (
         <ol className="mobile-home-task-list">
-          {groups.map((g, index) => (
+          {displayGroups.map((g, index) => (
             <ProcurementTaskListItem
               key={g.sku}
               group={g}
               index={index}
               sort={sort}
               orders={orders}
-              onOpen={() => openProcurementSkuPage(g.sku)}
+              onOpen={() =>
+                openProcurementSkuPage(g.sku, {
+                  readOnly: sort === 'oa' ? isProcurementSkuPageReadOnly(g, orders) : false,
+                })
+              }
             />
           ))}
         </ol>
-      )}
-    </section>
+      ) : null}
+      </section>
+    </div>
   )
 }
 
@@ -104,15 +194,21 @@ function ProcurementTaskListItem({
           {index + 1}
         </span>
         <span className="mobile-home-task-list__body">
-          <span className="mobile-home-task-list__title">{group.productName}</span>
+          <span className="mobile-home-task-list__title">
+            {formatSkuProductTitle(group.productName, group.spec)}
+          </span>
           <span className="mobile-home-task-list__sub">
-            {group.spec} · 共缺 {group.totalGap}
+            售价 ¥{group.unitPrice}/{group.unit} · 共缺 {group.totalGap}
             {group.unit} · {group.lineCount} 个 PO
-            {sort === 'oa' ? ` · 最早交期 ${deliveryDate}` : ''}
+            {sort === 'oa' ? ` · 所有 PO 最早交期 ${deliveryDate}` : ''}
           </span>
           {sort === 'delivery' ? (
-            <span className="mobile-home-task-list__delivery" aria-label={`最早交期 ${deliveryDate}`}>
-              最早交期 <span className="mobile-home-task-list__delivery-date">{deliveryDate}</span>
+            <span
+              className="mobile-home-task-list__delivery"
+              aria-label={`所有 PO 中，最早要求交期 ${deliveryDate}`}
+            >
+              所有 PO 最早交期{' '}
+              <span className="mobile-home-task-list__delivery-date">{deliveryDate}</span>
             </span>
           ) : null}
           {oaLabel && oaBucket ? (

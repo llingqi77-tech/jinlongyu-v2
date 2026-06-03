@@ -74,6 +74,8 @@ export interface ShortagePOLine {
   procurementMode: ProcurementMode
   status: ShortageLineStatus
   opsPoNumber: string
+  /** 供应商直送时的物流单号（选填） */
+  logisticsTrackingNo: string
   /** 采购提交后推送给销售的时间（按品+批次聚合通知） */
   salesProcurementNotifiedAt: string
 }
@@ -95,6 +97,8 @@ export interface SkuHotelSubRow {
   deliveryAddress: string
   gap: number
   unit: string
+  /** 售价单价（元） */
+  unitPrice: number
   requiredDeliveryDate: string
   daysRemaining: number
   fulfillmentMethod: FulfillmentMethod
@@ -111,6 +115,8 @@ export interface ProcurementSkuGroup {
   productName: string
   spec: string
   unit: string
+  /** 售价单价（元），同 SKU 下各 PO 一致时取首条 */
+  unitPrice: number
   totalGap: number
   hotelCount: number
   lineCount: number
@@ -217,6 +223,86 @@ export type MobileAgentPhase = 'idle' | 'awaiting_task_input' | 'confirming'
 
 export type MobileOnboardingPhase = 'role_pick' | 'ready'
 
+export type ProductCategoryKey = 'oil' | 'rice' | 'noodle' | 'dry_spice' | 'other'
+
+export type FulfillmentOverviewStatusKind =
+  | 'pending'
+  | 'oa_pending'
+  | 'oa_rejected'
+  | 'defer'
+  | 'fulfilling'
+
+export interface FulfillmentProcessedSkuRow {
+  sku: string
+  title: string
+  totalGap: number
+  unit: string
+  unitPrice: number
+  lineCount: number
+  earliestDelivery: string
+  handlingLabel: string
+  oaLabel: string
+}
+
+export interface FulfillmentCategoryRow {
+  key: ProductCategoryKey
+  label: string
+  totalSkuCount: number
+  pendingSkuCount: number
+}
+
+export interface FulfillmentSkuRow {
+  sku: string
+  title: string
+  totalGap: number
+  unit: string
+  unitPrice: number
+  lineCount: number
+  earliestDelivery: string
+  statusKind: FulfillmentOverviewStatusKind
+  statusLabel: string
+  pendingPoCount: number
+  processedPoCount: number
+}
+
+export type FulfillmentDataPanelState =
+  | { level: 'categories'; categories: FulfillmentCategoryRow[] }
+  | {
+      level: 'skus'
+      categoryKey: ProductCategoryKey
+      categoryLabel: string
+      pendingSkus: FulfillmentSkuRow[]
+      processedSkus: FulfillmentProcessedSkuRow[]
+    }
+
+export interface SalesHotelOverviewRow {
+  hotelKey: string
+  hotelName: string
+  deliveryAddress: string
+  lineCount: number
+  pendingCount: number
+  deferCount: number
+  urgentCount: number
+  nearestDelivery: string
+}
+
+export type SalesHotelDataPanelState =
+  | {
+      level: 'overview'
+      skuCount: number
+      hotelCount: number
+      hotels: SalesHotelOverviewRow[]
+    }
+  | {
+      level: 'hotel'
+      hotelKey: string
+      hotelName: string
+      deliveryAddress: string
+      pendingLines: SalesHotelLineItem[]
+      deferLines: SalesHotelLineItem[]
+      urgentLines: SalesHotelLineItem[]
+    }
+
 export type MobileChatMessageKind =
   | 'text'
   | 'welcome_card'
@@ -224,6 +310,8 @@ export type MobileChatMessageKind =
   | 'system'
   | 'order_info'
   | 'supplier_options'
+  | 'fulfillment_data_panel'
+  | 'sales_hotel_data_panel'
 
 export interface MobileSupplierOption {
   index: number
@@ -263,6 +351,8 @@ export interface MobileChatMessageMeta {
   orderStatus?: 'active' | 'completed'
   suppliers?: MobileSupplierOption[]
   actions?: MobileChatAction[]
+  fulfillmentPanel?: FulfillmentDataPanelState
+  salesHotelPanel?: SalesHotelDataPanelState
 }
 
 export interface MobileChatMessage {
@@ -373,6 +463,7 @@ export interface SubmitProcurementSkuBatchRow {
   price?: number
   eta?: string
   deliveryMethod?: DeliveryMethod
+  logisticsTrackingNo?: string
   actualFulfillQty: number
 }
 
@@ -387,6 +478,7 @@ export type ProcurementPoFormState = {
   price: string
   eta: string
   deliveryMethod: DeliveryMethod
+  logisticsTrackingNo: string
 }
 
 /** 角色选择页「OA 提醒通知」预览场景 */

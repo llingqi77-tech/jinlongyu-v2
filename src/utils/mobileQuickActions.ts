@@ -9,6 +9,10 @@ import {
 } from './shortageAggregations'
 import { getMobileHomeKpis, getRoleTasksSorted } from './mobileAgentSummary'
 
+export type MobileSalesQuickView = 'hotel_overview' | 'fulfillment'
+
+export type MobileProcurementQuickView = 'delivery' | 'oa' | 'fulfillment'
+
 export type MobileQuickActionKind =
   | 'open_dashboard'
   | 'open_task_list'
@@ -32,16 +36,13 @@ const SALES_QUICK_ACTIONS: MobileQuickActionItem[] = [
 ]
 
 const PROCUREMENT_QUICK_ACTIONS: MobileQuickActionItem[] = [
-  { id: 'delivery', label: '按交货期排序', kind: 'procurement_sort', procurementSort: 'delivery' },
-  { id: 'oa', label: '按OA审批排序', kind: 'procurement_sort', procurementSort: 'oa' },
+  { id: 'delivery', label: '待办清单', kind: 'procurement_sort', procurementSort: 'delivery' },
+  { id: 'oa', label: 'OA进度查询', kind: 'procurement_sort', procurementSort: 'oa' },
   { id: 'dashboard', label: '缺货品履约数据', kind: 'open_dashboard' },
 ]
 
-const OPS_QUICK_ACTIONS: MobileQuickActionItem[] = [
-  { id: 'overview', label: '今日缺货', kind: 'open_kpi_detail', kpiKind: 'shortage' },
-  { id: 'submitted', label: '采购已提交', kind: 'open_kpi_detail', kpiKind: 'submitted' },
-  { id: 'dashboard', label: '缺货品履约数据', kind: 'open_dashboard' },
-]
+/** 运营进入即展示履约数据面板，无需底部快捷 Tab */
+const OPS_QUICK_ACTIONS: MobileQuickActionItem[] = []
 
 export function getMobileQuickActions(role: WorkbenchRole): MobileQuickActionItem[] {
   switch (role) {
@@ -89,7 +90,7 @@ export function buildQuickActionReply(
   }
 
   if (message === '今日缺货数据有多少？' || message === '今日缺货汇总') {
-    return `今日缺货 ${kpis.shortageLineCount} 个品，缺口合计 ${kpis.totalGap}；采购已提交 ${kpis.procurementSubmittedCount} 个品；物流已闭环 ${kpis.logisticsClosedCount} 张 PO。`
+    return `今日缺货 ${kpis.shortageLineCount} 个品，缺口合计 ${kpis.totalGap}；采购已提交 ${kpis.procurementSubmittedCount} 个品。`
   }
 
   if (message === '最紧急的是哪个品？' || message === '采购侧哪些任务交期最紧急？') {

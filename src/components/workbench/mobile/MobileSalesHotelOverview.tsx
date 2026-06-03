@@ -22,7 +22,7 @@ function hotelChannelSummary(group: SalesHotelGroup): string {
     else pendingCount += 1
   }
   const parts: string[] = [`${group.lines.length} 个品`]
-  if (pendingCount > 0) parts.push(`${pendingCount} 待采购处理`)
+  if (pendingCount > 0) parts.push(`${pendingCount} 待处理`)
   if (deferCount > 0) parts.push(`${deferCount} 延期`)
   if (urgentCount > 0) parts.push(`${urgentCount} 加急`)
   return parts.join(' · ')

@@ -70,11 +70,11 @@ export function getMobileHomeKpis(orders: ShortagePO[], role: WorkbenchRole): Mo
 export function getRoleWelcomeLine(role: WorkbenchRole): string {
   switch (role) {
     case 'sales':
-      return '以下按酒店展示加急、延期缺货，多家客户时左右滑动切换。'
+      return '下方为按酒店数据总览，点选酒店可查看待处理、延期与加急明细。'
     case 'procurement':
       return '点击品项进入处理页，各 PO 可分别选择加急/延期、供应商与配送方式。'
     case 'ops':
-      return '以下是今日缺货处理概览，可查看数据大盘了解详情。'
+      return '点选品类查看待处理与已提交明细。'
   }
 }
 
@@ -110,7 +110,7 @@ export function findTaskByUserText(
 export const MOBILE_SUGGESTED_QUESTIONS: Record<WorkbenchRole, string[]> = {
   procurement: ['今日还有多少缺货？', '最紧急的是哪个品？', '打开数据大盘'],
   sales: ['有哪些客户延期了？', '今日缺货总量多少？'],
-  ops: ['今日缺货汇总', '采购已提交多少？', '打开数据大盘'],
+  ops: ['今日缺货汇总', '采购已提交多少？', '最紧急的是哪个品？'],
 }
 
 export const ROLE_LABEL: Record<WorkbenchRole, string> = {

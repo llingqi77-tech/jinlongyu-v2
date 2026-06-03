@@ -4,46 +4,47 @@ import {
   PROCUREMENT_FULFILLMENT_CHOICE_LABEL,
 } from '../../../constants/shortageLabels'
 import { resolveActualFulfillQty } from '../../../utils/procurementFormDefaults'
+import { getSupplierLeadTimeDays } from '../../../utils/supplierRecommendations'
+
+function formatMargin(value: number): string {
+  const rounded = Math.round(value * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2)
+}
 
 type MobileProcurementPoRowProps = {
   row: SkuHotelSubRow
+  sku: string
   form: ProcurementPoFormState
   onChange: (patch: Partial<ProcurementPoFormState>) => void
-  onVoiceFill?: () => void
-  voiceActive?: boolean
-  voiceDisabled?: boolean
   readOnly?: boolean
 }
 
 export function MobileProcurementPoRow({
   row,
+  sku,
   form,
   onChange,
-  onVoiceFill,
-  voiceActive,
-  voiceDisabled,
   readOnly = false,
 }: MobileProcurementPoRowProps) {
   const actualQty = resolveActualFulfillQty(form.fulfillmentMode, row.gap)
+  const showProcurementFields =
+    form.fulfillmentMode === 'urgent' || form.fulfillmentMode === 'defer'
   const isUrgent = form.fulfillmentMode === 'urgent'
+  const leadDays =
+    showProcurementFields && form.supplierName
+      ? getSupplierLeadTimeDays(sku, form.supplierName)
+      : null
+
+  const procurementPrice = Number(form.price)
+  const hasProcurementPrice =
+    showProcurementFields && form.price !== '' && Number.isFinite(procurementPrice)
+  const unitMargin = hasProcurementPrice ? row.unitPrice - procurementPrice : null
+  const marginNegative = unitMargin != null && unitMargin < 0
 
   return (
     <div className={`procurement-po-row${readOnly ? ' procurement-po-row--readonly' : ''}`}>
       <div className="procurement-po-row__head">
         <strong>{row.hotelName}</strong>
-        <div className="procurement-po-row__head-actions">
-          {onVoiceFill && !readOnly ? (
-            <button
-              type="button"
-              className={`procurement-po-row__ai-btn${voiceActive ? ' procurement-po-row__ai-btn--active' : ''}`}
-              onClick={onVoiceFill}
-              disabled={voiceDisabled}
-              aria-label={`${row.hotelName} AI 语音填入`}
-            >
-              🎙
-            </button>
-          ) : null}
-        </div>
       </div>
       <p className="procurement-po-row__addr">{row.deliveryAddress}</p>
       <p className="procurement-po-row__meta">
@@ -77,7 +78,7 @@ export function MobileProcurementPoRow({
         <input type="text" readOnly value={`${actualQty}${row.unit}`} />
       </label>
 
-      {isUrgent ? (
+      {showProcurementFields ? (
         <>
           <label
             className={
@@ -102,7 +103,13 @@ export function MobileProcurementPoRow({
                 : 'procurement-po-row__field'
             }
           >
-            <span>采购价格（元）</span>
+            <span>
+              采购价格（元）
+              <span className="procurement-po-row__sales-ref">
+                {' '}
+                · 售价 ¥{row.unitPrice}/{row.unit}
+              </span>
+            </span>
             <input
               type="number"
               value={form.price}
@@ -110,6 +117,18 @@ export function MobileProcurementPoRow({
               min={1}
               readOnly={readOnly}
             />
+            {unitMargin != null ? (
+              <p
+                className={
+                  marginNegative
+                    ? 'procurement-po-row__margin procurement-po-row__margin--alert'
+                    : 'procurement-po-row__margin'
+                }
+                aria-live="polite"
+              >
+                毛利 ¥{formatMargin(unitMargin)}/{row.unit}
+              </p>
+            ) : null}
           </label>
           <label
             className={
@@ -126,26 +145,57 @@ export function MobileProcurementPoRow({
               readOnly={readOnly}
             />
           </label>
-          <div className="procurement-po-row__field">
-            <span>配送方式</span>
-            <div className="procurement-po-row__delivery">
-              {(['warehouse', 'direct'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={
-                    form.deliveryMethod === m
-                      ? 'procurement-po-row__opt procurement-po-row__opt--on'
-                      : 'procurement-po-row__opt'
-                  }
-                  onClick={() => !readOnly && onChange({ deliveryMethod: m })}
-                  disabled={readOnly}
-                >
-                  {DELIVERY_METHOD_LABEL[m]}
-                </button>
-              ))}
+          {leadDays != null ? (
+            <p className="procurement-po-row__lead-hint">
+              该供应商常规供货周期约 {leadDays} 天，可按实际情况调整交期
+            </p>
+          ) : null}
+          {isUrgent ? (
+            <div className="procurement-po-row__field">
+              <span>配送方式</span>
+              <div className="procurement-po-row__delivery">
+                {(['warehouse', 'direct'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={
+                      form.deliveryMethod === m
+                        ? 'procurement-po-row__opt procurement-po-row__opt--on'
+                        : 'procurement-po-row__opt'
+                    }
+                    onClick={() =>
+                      !readOnly &&
+                      onChange({
+                        deliveryMethod: m,
+                        logisticsTrackingNo: m === 'direct' ? form.logisticsTrackingNo : '',
+                      })
+                    }
+                    disabled={readOnly}
+                  >
+                    {DELIVERY_METHOD_LABEL[m]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
+          {isUrgent && form.deliveryMethod === 'direct' ? (
+            <label
+              className={
+                readOnly
+                  ? 'procurement-po-row__field procurement-po-row__field--readonly'
+                  : 'procurement-po-row__field'
+              }
+            >
+              <span>物流单号（选填）</span>
+              <input
+                type="text"
+                value={form.logisticsTrackingNo}
+                onChange={(e) => onChange({ logisticsTrackingNo: e.target.value })}
+                placeholder="填写供应商物流单号"
+                readOnly={readOnly}
+              />
+            </label>
+          ) : null}
         </>
       ) : null}
     </div>

@@ -11,7 +11,17 @@ import {
   ROLE_LABEL,
 } from './mobileAgentSummary'
 import { buildQuickActionReply, isRoleQuickActionMessage } from './mobileQuickActions'
-import { appendAgentReplies, type AgentDialogueReply } from './mobileChatReplies'
+import { appendAgentReplies, appendAgentReply, type AgentDialogueReply } from './mobileChatReplies'
+import {
+  FULFILLMENT_CMD_PREFIX,
+  fulfillmentReplyForCommand,
+  isFulfillmentCommand,
+} from './mobileFulfillmentData'
+import {
+  SALES_HOTEL_CMD_PREFIX,
+  isSalesHotelCommand,
+  salesHotelReplyForCommand,
+} from './mobileSalesHotelData'
 import {
   daysRemaining,
   getShortageLines,
@@ -37,10 +47,6 @@ function answerFaq(text: string, role: WorkbenchRole, store: ShortageState): str
       (role !== 'sales' || isSalesTrackedShortageLine(l))
   )
 
-  if (/数据大盘|打开大盘|大盘/.test(text)) {
-    store.openMobileDashboardSheet()
-    return '已打开缺货处理数据大盘。'
-  }
 
   if (/缺货/.test(text)) {
     const scope = role === 'sales' ? '（仅加急、延期）' : ''
@@ -92,12 +98,74 @@ function answerFaq(text: string, role: WorkbenchRole, store: ShortageState): str
   return null
 }
 
+export function sendFulfillmentPanelAction(userLabel: string, command: string) {
+  const state = useShortageStore.getState()
+  if (state.mobileOnboardingPhase !== 'ready') return
+
+  if (state.role === 'sales') state.setMobileSalesQuickView('fulfillment')
+  if (state.role === 'procurement') state.setMobileProcurementQuickView('fulfillment')
+  state.appendMobileChat({ side: 'user', content: userLabel })
+  const reply = fulfillmentReplyForCommand(command, state.orders)
+  if (reply) {
+    appendAgentReply(state, { text: reply.text, fulfillmentPanel: reply.panel }, true)
+  }
+}
+
+function isSalesHotelOverviewRefreshCommand(command: string): boolean {
+  return (
+    command === `${SALES_HOTEL_CMD_PREFIX}open` || command === `${SALES_HOTEL_CMD_PREFIX}back`
+  )
+}
+
+export function sendSalesHotelPanelAction(userLabel: string, command: string) {
+  const state = useShortageStore.getState()
+  if (state.mobileOnboardingPhase !== 'ready') return
+
+  state.setMobileSalesQuickView('hotel_overview')
+  const reply = salesHotelReplyForCommand(command, state.orders)
+  if (!reply) return
+
+  if (isSalesHotelOverviewRefreshCommand(command)) {
+    const existing = state.mobileChatMessages.find(
+      (m) => m.kind === 'sales_hotel_data_panel' && m.side === 'agent'
+    )
+    if (existing) {
+      state.patchSalesHotelPanelMessage(existing.id, reply.text, reply.panel)
+      return
+    }
+  }
+
+  state.appendMobileChat({ side: 'user', content: userLabel })
+  appendAgentReply(state, { text: reply.text, salesHotelPanel: reply.panel }, true)
+}
+
 export function handleMobileUserMessage(text: string): DialogueResult {
   const trimmed = text.trim()
   if (!trimmed) return { replies: ['请输入内容或点选下方快捷问题。'] }
 
   const store = useShortageStore.getState()
   const { role } = store
+
+  if (isFulfillmentCommand(trimmed)) {
+    const reply = fulfillmentReplyForCommand(trimmed, store.orders)
+    if (reply) return { replies: [{ text: reply.text, fulfillmentPanel: reply.panel }] }
+  }
+
+  if (isSalesHotelCommand(trimmed)) {
+    const reply = salesHotelReplyForCommand(trimmed, store.orders)
+    if (reply) return { replies: [{ text: reply.text, salesHotelPanel: reply.panel }] }
+  }
+
+  if (/按酒店|酒店数据总览|酒店总览/.test(trimmed) && role === 'sales') {
+    const reply = salesHotelReplyForCommand(`${SALES_HOTEL_CMD_PREFIX}open`, store.orders)
+    if (reply) return { replies: [{ text: reply.text, salesHotelPanel: reply.panel }] }
+  }
+
+  if (/数据大盘|打开大盘|大盘|缺货品履约数据|履约数据/.test(trimmed)) {
+    const reply = fulfillmentReplyForCommand(`${FULFILLMENT_CMD_PREFIX}open`, store.orders)
+    if (reply) return { replies: [{ text: reply.text, fulfillmentPanel: reply.panel }] }
+    return { replies: ['今日暂无缺货品项。'] }
+  }
 
   if (isRoleQuickActionMessage(trimmed, role)) {
     const quickReply = buildQuickActionReply(trimmed, role, store.orders)

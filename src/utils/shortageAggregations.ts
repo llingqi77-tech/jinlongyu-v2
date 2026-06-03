@@ -15,6 +15,7 @@ import type {
   ShortagePO,
   ShortagePOLine,
   WorkbenchRole,
+  FulfillmentOverviewStatusKind,
 } from '../types/shortage'
 import { FULFILLMENT_METHOD_LABEL, OA_APPROVAL_STATUS_LABEL } from '../constants/shortageLabels'
 import {
@@ -224,6 +225,7 @@ export function groupBySku(orders: ShortagePO[], refDate = new Date()): Procurem
         productName: line.productName,
         spec: line.spec,
         unit: line.unit,
+        unitPrice: line.unitPrice,
         totalGap: 0,
         hotelCount: 0,
         lineCount: 0,
@@ -252,6 +254,7 @@ export function groupBySku(orders: ShortagePO[], refDate = new Date()): Procurem
       deliveryAddress: po.deliveryAddress,
       gap: line.gap,
       unit: line.unit,
+      unitPrice: line.unitPrice,
       requiredDeliveryDate: po.requiredDeliveryDate,
       daysRemaining: dr,
       fulfillmentMethod: line.fulfillmentMethod,
@@ -273,7 +276,236 @@ export function groupBySku(orders: ShortagePO[], refDate = new Date()): Procurem
     })
       ? 'done'
       : 'pending'
-    g.hotelRows.sort((a, b) => a.daysRemaining - b.daysRemaining)
+    g.hotelRows.sort(
+      (a, b) =>
+        a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate) ||
+        a.lineId.localeCompare(b.lineId)
+    )
+  }
+
+  return groups.sort((a, b) => a.earliestRequiredDate.localeCompare(b.earliestRequiredDate))
+}
+
+export type FulfillmentOverviewSkuGroup = ProcurementSkuGroup & {
+  statusKind: FulfillmentOverviewStatusKind
+  statusLabel: string
+  pendingPoCount: number
+  processedPoCount: number
+}
+
+/** 任务清单（按交期）：尚未提交采购方案，或 OA 已驳回待改 */
+export function isSkuAwaitingProcurementForm(line: ShortagePOLine): boolean {
+  if (line.procurementOutcome === 'pending' && line.fulfillmentMethod === 'pending') return true
+  if (line.oaApprovalStatus === 'rejected') return true
+  return false
+}
+
+export function isProcurementSkuAwaitingForm(
+  group: ProcurementSkuGroup,
+  orders: ShortagePO[],
+  refDate = new Date()
+): boolean {
+  const skuLines = filterProcurementTaskLines(getShortageLines(orders), refDate).filter(
+    (l) => l.sku === group.sku
+  )
+  return skuLines.some(isSkuAwaitingProcurementForm)
+}
+
+export function resolveSkuOverviewStatus(
+  lines: ShortagePOLine[]
+): { kind: FulfillmentOverviewStatusKind; label: string } {
+  if (lines.length === 0) return { kind: 'pending', label: '待处理' }
+  if (lines.some((l) => l.procurementOutcome === 'pending' && l.fulfillmentMethod === 'pending')) {
+    return { kind: 'pending', label: '待处理' }
+  }
+  if (lines.some((l) => l.oaApprovalStatus === 'rejected')) return { kind: 'oa_rejected', label: '已驳回' }
+  if (lines.some((l) => l.oaApprovalStatus === 'pending')) return { kind: 'oa_pending', label: 'OA审批中' }
+  if (lines.some((l) => l.procurementOutcome === 'not_satisfied')) return { kind: 'defer', label: '已延期' }
+  return { kind: 'fulfilling', label: '履约中' }
+}
+
+export function isProcurementLineSubmitted(line: ShortagePOLine): boolean {
+  return line.procurementOutcome === 'satisfied' || line.procurementOutcome === 'not_satisfied'
+}
+
+export function isProcurementLineOaSubmitted(line: ShortagePOLine): boolean {
+  return isProcurementLineSubmitted(line) && line.oaApprovalStatus !== 'none'
+}
+
+export function resolveSkuHandlingLabel(lines: ShortagePOLine[]): '加急' | '延期' {
+  const submitted = lines.filter(isProcurementLineSubmitted)
+  if (submitted.some((l) => l.procurementOutcome === 'not_satisfied')) return '延期'
+  return '加急'
+}
+
+/** 仅针对已提交 OA 的 PO 行 */
+export function resolveSkuOaProgressLabel(lines: ShortagePOLine[]): string {
+  const oaLines = lines.filter((l) => l.oaApprovalStatus !== 'none')
+  if (oaLines.length === 0) return ''
+  if (oaLines.some((l) => l.oaApprovalStatus === 'rejected')) return '已驳回'
+  if (oaLines.some((l) => l.oaApprovalStatus === 'pending')) return '审批中'
+  return '已通过'
+}
+
+/** OA 进度查询：仅已提交采购方案的缺货 SKU */
+export function groupBySkuOaProgress(orders: ShortagePO[], refDate = new Date()): ProcurementSkuGroup[] {
+  const map = new Map<string, ProcurementSkuGroup>()
+  const taskLines = filterProcurementTaskLines(getShortageLines(orders), refDate)
+
+  for (const { po, ...line } of taskLines) {
+    if (isLogisticsFulfillment(line.fulfillmentMethod)) continue
+    if (!isProcurementLineOaSubmitted(line)) continue
+
+    let group = map.get(line.sku)
+    if (!group) {
+      group = {
+        sku: line.sku,
+        productName: line.productName,
+        spec: line.spec,
+        unit: line.unit,
+        unitPrice: line.unitPrice,
+        totalGap: 0,
+        hotelCount: 0,
+        lineCount: 0,
+        earliestRequiredDate: po.requiredDeliveryDate,
+        latestRequiredDate: po.requiredDeliveryDate,
+        procurementStatus: 'pending',
+        hotelRows: [],
+      }
+      map.set(line.sku, group)
+    }
+
+    const dr = daysRemaining(po.requiredDeliveryDate)
+    group.totalGap += line.gap
+    group.lineCount += 1
+    if (po.requiredDeliveryDate < group.earliestRequiredDate) {
+      group.earliestRequiredDate = po.requiredDeliveryDate
+    }
+    if (po.requiredDeliveryDate > group.latestRequiredDate) {
+      group.latestRequiredDate = po.requiredDeliveryDate
+    }
+
+    group.hotelRows.push({
+      lineId: line.id,
+      poId: po.id,
+      hotelName: po.customerName,
+      deliveryAddress: po.deliveryAddress,
+      gap: line.gap,
+      unit: line.unit,
+      unitPrice: line.unitPrice,
+      requiredDeliveryDate: po.requiredDeliveryDate,
+      daysRemaining: dr,
+      fulfillmentMethod: line.fulfillmentMethod,
+      supplierName: line.supplierName,
+      eta: line.eta,
+      amount: line.amount,
+      status: line.status,
+      procurementConfirmed: line.procurementConfirmed,
+      procurementOutcome: line.procurementOutcome,
+    })
+  }
+
+  const groups = Array.from(map.values()).filter((g) => g.hotelRows.length > 0)
+  for (const g of groups) {
+    g.hotelCount = new Set(g.hotelRows.map((r) => hotelKey(r.hotelName, r.deliveryAddress))).size
+    g.hotelRows.sort(
+      (a, b) =>
+        a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate) ||
+        a.lineId.localeCompare(b.lineId)
+    )
+  }
+
+  return groups.sort((a, b) => a.earliestRequiredDate.localeCompare(b.earliestRequiredDate))
+}
+
+export function getOaProgressProcurementGroups(
+  orders: ShortagePO[],
+  refDate = new Date()
+): ProcurementSkuGroup[] {
+  return groupBySkuOaProgress(orders, refDate)
+}
+
+/** 缺货品履约数据：近 3 日交期内的全部缺货 SKU（含已提交） */
+export function groupBySkuFulfillmentOverview(
+  orders: ShortagePO[],
+  refDate = new Date()
+): FulfillmentOverviewSkuGroup[] {
+  const map = new Map<string, FulfillmentOverviewSkuGroup>()
+  const taskLines = filterProcurementTaskLines(getShortageLines(orders), refDate)
+
+  for (const { po, ...line } of taskLines) {
+    if (isLogisticsFulfillment(line.fulfillmentMethod)) continue
+
+    let group = map.get(line.sku)
+    if (!group) {
+      group = {
+        sku: line.sku,
+        productName: line.productName,
+        spec: line.spec,
+        unit: line.unit,
+        unitPrice: line.unitPrice,
+        totalGap: 0,
+        hotelCount: 0,
+        lineCount: 0,
+        earliestRequiredDate: po.requiredDeliveryDate,
+        latestRequiredDate: po.requiredDeliveryDate,
+        procurementStatus: 'pending',
+        hotelRows: [],
+        statusKind: 'pending',
+        statusLabel: '待处理',
+        pendingPoCount: 0,
+        processedPoCount: 0,
+      }
+      map.set(line.sku, group)
+    }
+
+    const dr = daysRemaining(po.requiredDeliveryDate)
+    group.totalGap += line.gap
+    group.lineCount += 1
+    if (po.requiredDeliveryDate < group.earliestRequiredDate) {
+      group.earliestRequiredDate = po.requiredDeliveryDate
+    }
+    if (po.requiredDeliveryDate > group.latestRequiredDate) {
+      group.latestRequiredDate = po.requiredDeliveryDate
+    }
+
+    group.hotelRows.push({
+      lineId: line.id,
+      poId: po.id,
+      hotelName: po.customerName,
+      deliveryAddress: po.deliveryAddress,
+      gap: line.gap,
+      unit: line.unit,
+      unitPrice: line.unitPrice,
+      requiredDeliveryDate: po.requiredDeliveryDate,
+      daysRemaining: dr,
+      fulfillmentMethod: line.fulfillmentMethod,
+      supplierName: line.supplierName,
+      eta: line.eta,
+      amount: line.amount,
+      status: line.status,
+      procurementConfirmed: line.procurementConfirmed,
+      procurementOutcome: line.procurementOutcome,
+    })
+  }
+
+  const groups = Array.from(map.values()).filter((g) => g.hotelRows.length > 0)
+  for (const g of groups) {
+    const skuLines = taskLines.filter((l) => l.sku === g.sku)
+    const status = resolveSkuOverviewStatus(skuLines)
+    g.statusKind = status.kind
+    g.statusLabel = status.label
+    g.pendingPoCount = skuLines.filter(
+      (l) => l.procurementOutcome === 'pending' && l.fulfillmentMethod === 'pending'
+    ).length
+    g.processedPoCount = g.lineCount - g.pendingPoCount
+    g.hotelCount = new Set(g.hotelRows.map((r) => hotelKey(r.hotelName, r.deliveryAddress))).size
+    g.procurementStatus = g.pendingPoCount === 0 ? 'done' : 'pending'
+    g.hotelRows.sort(
+      (a, b) =>
+        a.requiredDeliveryDate.localeCompare(b.requiredDeliveryDate) ||
+        a.lineId.localeCompare(b.lineId)
+    )
   }
 
   return groups.sort((a, b) => a.earliestRequiredDate.localeCompare(b.earliestRequiredDate))
@@ -811,7 +1043,28 @@ export function getProcurementSkuGroup(
   sku: string,
   refDate = new Date()
 ): ProcurementSkuGroup | null {
-  return getPendingProcurementGroups(orders, refDate).find((g) => g.sku === sku) ?? null
+  return getProcurementSkuGroupForPage(orders, sku, refDate)
+}
+
+/** 采购填写页：待办 + 近 3 日交期内已提交品项 */
+export function getProcurementSkuGroupForPage(
+  orders: ShortagePO[],
+  sku: string,
+  refDate = new Date()
+): ProcurementSkuGroup | null {
+  return (
+    getPendingProcurementGroups(orders, refDate).find((g) => g.sku === sku) ??
+    groupBySkuFulfillmentOverview(orders, refDate).find((g) => g.sku === sku) ??
+    null
+  )
+}
+
+export function isProcurementSkuPageReadOnly(
+  group: ProcurementSkuGroup,
+  orders: ShortagePO[]
+): boolean {
+  const bucket = getProcurementSkuOaBucket(group, orders)
+  return bucket === 'pending' || bucket === 'approved'
 }
 
 /** 按品聚合：取各品下所有 PO 的最早 DDL，再选出全局最早（可并列多个品） */

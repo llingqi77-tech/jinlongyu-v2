@@ -46,6 +46,7 @@ export function buildPoFormStateFromOrders(
       price: String(line.procurementPrice || line.unitPrice),
       eta: line.eta || row.requiredDeliveryDate,
       deliveryMethod: line.deliveryMethod ?? 'warehouse',
+      logisticsTrackingNo: line.logisticsTrackingNo ?? '',
     }
   }
   return map

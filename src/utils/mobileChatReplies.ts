@@ -1,9 +1,15 @@
-import type { MobileChatAction } from '../types/shortage'
+import type {
+  FulfillmentDataPanelState,
+  MobileChatAction,
+  SalesHotelDataPanelState,
+} from '../types/shortage'
 import type { ShortageState } from '../store/shortageStore'
 
 export type AgentDialogueReply = {
   text: string
   actions?: MobileChatAction[]
+  fulfillmentPanel?: FulfillmentDataPanelState
+  salesHotelPanel?: SalesHotelDataPanelState
 }
 
 export const CHAT_ACTION_SUBMIT_OA: MobileChatAction = {
@@ -27,11 +33,25 @@ export function appendAgentReply(
     store.appendMobileChat({ side: 'agent', content: reply, stream })
     return
   }
+  const meta =
+    reply.fulfillmentPanel != null
+      ? { fulfillmentPanel: reply.fulfillmentPanel, actions: reply.actions }
+      : reply.salesHotelPanel != null
+        ? { salesHotelPanel: reply.salesHotelPanel, actions: reply.actions }
+        : reply.actions?.length
+          ? { actions: reply.actions }
+          : undefined
+  const kind = reply.fulfillmentPanel
+    ? 'fulfillment_data_panel'
+    : reply.salesHotelPanel
+      ? 'sales_hotel_data_panel'
+      : undefined
   store.appendMobileChat({
     side: 'agent',
     content: reply.text,
+    kind,
     stream,
-    meta: reply.actions?.length ? { actions: reply.actions } : undefined,
+    meta,
   })
 }
 
