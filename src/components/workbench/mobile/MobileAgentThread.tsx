@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import { sendMobileAgentMessage } from '../../../utils/mobileAgentDialogue'
 import { ChatMessageRow } from '../shared/ChatMessageRow'
@@ -15,7 +15,31 @@ export function MobileAgentThread() {
   const threadRef = useRef<HTMLDivElement>(null)
   const [streamingId, setStreamingId] = useState<string | null>(null)
   const prevCountRef = useRef(0)
-  const scrollMessageCountRef = useRef(0)
+  const scrollMessageCountRef = useRef(messages.length)
+  const prevScrollToTopNonceRef = useRef(scrollToTopNonce)
+  const setMobileChatScrollTop = useShortageStore((s) => s.setMobileChatScrollTop)
+
+  useLayoutEffect(() => {
+    const el = threadRef.current
+    if (!el) return
+    const { mobileChatRestoreScrollOnNextMount, mobileChatScrollTop } =
+      useShortageStore.getState()
+    if (!mobileChatRestoreScrollOnNextMount) return
+    const restore = () => {
+      el.scrollTop = mobileChatScrollTop
+    }
+    restore()
+    requestAnimationFrame(restore)
+    useShortageStore.setState({ mobileChatRestoreScrollOnNextMount: false })
+  }, [])
+
+  useEffect(() => {
+    const el = threadRef.current
+    if (!el) return
+    const onScroll = () => setMobileChatScrollTop(el.scrollTop)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [setMobileChatScrollTop])
 
   useEffect(() => {
     const el = threadRef.current
@@ -25,9 +49,14 @@ export function MobileAgentThread() {
     const messageAdded = messages.length > prevLen
     scrollMessageCountRef.current = messages.length
     if (!messageAdded) return
+    if (useShortageStore.getState().mobileChatRestoreScrollOnNextMount) return
 
+    const role = useShortageStore.getState().role
     const welcomeOnly =
-      messages.length === 1 && messages[0]?.kind === 'welcome_card' && messages[0]?.side === 'agent'
+      role !== 'procurement' &&
+      messages.length === 1 &&
+      messages[0]?.kind === 'welcome_card' &&
+      messages[0]?.side === 'agent'
     const defaultEntryPanel =
       messages.length === 1 &&
       messages[0]?.side === 'agent' &&
@@ -37,6 +66,8 @@ export function MobileAgentThread() {
   }, [messages, streamingId])
 
   useEffect(() => {
+    if (scrollToTopNonce === prevScrollToTopNonceRef.current) return
+    prevScrollToTopNonceRef.current = scrollToTopNonce
     const el = threadRef.current
     if (!el || scrollToTopNonce === 0) return
     el.scrollTo({ top: 0, behavior: 'smooth' })

@@ -152,11 +152,23 @@ export function MobileProcurementCardList() {
               index={index}
               sort={sort}
               orders={orders}
-              onOpen={() =>
+              onOpen={() => {
+                const oaBucket = sort === 'oa' ? getProcurementSkuOaBucket(g, orders) : null
+                const headerLabel =
+                  sort === 'delivery'
+                    ? '待采购处理'
+                    : oaBucket === 'rejected'
+                      ? '已驳回'
+                      : oaBucket === 'pending'
+                        ? '审批中'
+                        : oaBucket === 'approved'
+                          ? '已通过'
+                          : '待采购处理'
                 openProcurementSkuPage(g.sku, {
                   readOnly: sort === 'oa' ? isProcurementSkuPageReadOnly(g, orders) : false,
+                  headerLabel,
                 })
-              }
+              }}
             />
           ))}
         </ol>

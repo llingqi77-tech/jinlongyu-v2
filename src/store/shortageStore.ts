@@ -70,6 +70,9 @@ export interface ShortageState {
   expandedSku: string | null
   procurementActiveSku: string | null
   procurementSkuReadOnly: boolean
+  procurementSkuHeaderLabel: string | null
+  mobileChatScrollTop: number
+  mobileChatRestoreScrollOnNextMount: boolean
   procurementOaPreview: ProcurementOaPreviewOutcome | null
   procurementListSort: ProcurementListSort | null
   mobileSalesQuickView: MobileSalesQuickView | null
@@ -81,7 +84,11 @@ export interface ShortageState {
   setRole: (role: WorkbenchRole) => void
   selectTaskLine: (lineId: string | null) => void
   setExpandedSku: (sku: string | null) => void
-  openProcurementSkuPage: (sku: string, options?: { readOnly?: boolean }) => void
+  openProcurementSkuPage: (
+    sku: string,
+    options?: { readOnly?: boolean; headerLabel?: string }
+  ) => void
+  setMobileChatScrollTop: (top: number) => void
   closeProcurementSkuPage: () => void
   enterProcurementOaNotifyPreview: (outcome: ProcurementOaPreviewOutcome) => void
   loadTodayShortages: () => void
@@ -166,10 +173,13 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
   expandedSku: null,
   procurementActiveSku: null,
   procurementSkuReadOnly: false,
+  procurementSkuHeaderLabel: null,
   procurementOaPreview: null,
   procurementListSort: null,
   mobileSalesQuickView: null,
   mobileProcurementQuickView: null,
+  mobileChatScrollTop: 0,
+  mobileChatRestoreScrollOnNextMount: false,
   mobileChatScrollToTopNonce: 0,
 
   openWorkbench: () => {
@@ -191,10 +201,13 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       expandedSku: null,
       procurementActiveSku: null,
       procurementSkuReadOnly: false,
+      procurementSkuHeaderLabel: null,
       procurementOaPreview: null,
       procurementListSort: null,
       mobileSalesQuickView: null,
       mobileProcurementQuickView: null,
+      mobileChatScrollTop: 0,
+      mobileChatRestoreScrollOnNextMount: false,
     })
   },
 
@@ -216,10 +229,13 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       expandedSku: null,
       procurementActiveSku: null,
       procurementSkuReadOnly: false,
+      procurementSkuHeaderLabel: null,
       procurementOaPreview: null,
       procurementListSort: null,
       mobileSalesQuickView: null,
       mobileProcurementQuickView: null,
+      mobileChatScrollTop: 0,
+      mobileChatRestoreScrollOnNextMount: false,
     })
   },
 
@@ -234,33 +250,57 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       expandedSku: null,
       procurementActiveSku: null,
       procurementSkuReadOnly: false,
+      procurementSkuHeaderLabel: null,
       procurementOaPreview: null,
       procurementListSort: null,
       mobileSalesQuickView: null,
       mobileProcurementQuickView: null,
+      mobileChatScrollTop: 0,
+      mobileChatRestoreScrollOnNextMount: false,
     })
   },
 
   selectTaskLine: (lineId) => set({ selectedTaskLineId: lineId }),
   setExpandedSku: (sku) => set({ expandedSku: sku }),
 
-  openProcurementSkuPage: (sku, options) =>
+  openProcurementSkuPage: (sku, options) => {
+    const threadEl = document.querySelector('.platform-mobile .mobile-chat-thread')
+    const scrollTop =
+      threadEl instanceof HTMLElement ? threadEl.scrollTop : get().mobileChatScrollTop
     set({
       procurementActiveSku: sku,
       procurementSkuReadOnly: options?.readOnly ?? false,
+      procurementSkuHeaderLabel: options?.headerLabel ?? null,
       expandedSku: null,
-    }),
+      mobileChatScrollTop: scrollTop,
+      mobileChatRestoreScrollOnNextMount: true,
+    })
+  },
 
   closeProcurementSkuPage: () => {
     const wasPreview = get().procurementOaPreview != null
     if (wasPreview) {
       get().loadTodayShortages()
-      set({ procurementActiveSku: null, procurementSkuReadOnly: false, procurementOaPreview: null })
+      set({
+        procurementActiveSku: null,
+        procurementSkuReadOnly: false,
+        procurementSkuHeaderLabel: null,
+        procurementOaPreview: null,
+        mobileChatRestoreScrollOnNextMount: false,
+      })
       get().finishMobileActivation()
       return
     }
-    set({ procurementActiveSku: null, procurementSkuReadOnly: false, procurementOaPreview: null })
+    set({
+      procurementActiveSku: null,
+      procurementSkuReadOnly: false,
+      procurementSkuHeaderLabel: null,
+      procurementOaPreview: null,
+      mobileChatRestoreScrollOnNextMount: true,
+    })
   },
+
+  setMobileChatScrollTop: (top) => set({ mobileChatScrollTop: top }),
 
   enterProcurementOaNotifyPreview: (outcome) => {
     const oaStatus = outcome === 'approved' ? 'approved' : 'rejected'
@@ -653,7 +693,6 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       if (reply) {
         appendAgentReply(get(), { text: reply.text, salesHotelPanel: reply.panel }, true)
       }
-      get().bumpMobileChatScrollToTop()
       return
     }
     if (role === 'ops') {
@@ -661,7 +700,6 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       if (reply) {
         appendAgentReply(get(), { text: reply.text, fulfillmentPanel: reply.panel }, true)
       }
-      get().bumpMobileChatScrollToTop()
       return
     }
     set({ mobileProcurementQuickView: 'delivery', procurementListSort: 'delivery' })

@@ -8,6 +8,7 @@ import type {
 import {
   FULFILLMENT_CMD_PREFIX,
   formatFulfillmentSkuSub,
+  fulfillmentSkuHeaderLabel,
   isFulfillmentProcessedSkuReadOnly,
   resolveFulfillmentRowSkuId,
 } from '../../../utils/mobileFulfillmentData'
@@ -33,13 +34,13 @@ function SkuCardPending({
   onOpenSku,
 }: {
   sku: FulfillmentSkuRow
-  onOpenSku: (sku: string, readOnly?: boolean) => void
+  onOpenSku: (sku: string, procurementEditable: boolean, headerLabel: string) => void
 }) {
   return (
     <button
       type="button"
       className="mobile-fulfillment-panel__sku"
-      onClick={() => onOpenSku(sku.sku, false)}
+      onClick={() => onOpenSku(sku.sku, true, fulfillmentSkuHeaderLabel(true))}
     >
       <div className="mobile-fulfillment-panel__sku-head">
         <span className="mobile-fulfillment-panel__sku-title">{sku.title}</span>
@@ -63,7 +64,7 @@ function SkuCardProcessed({
   onOpenSku,
 }: {
   sku: FulfillmentProcessedSkuRow
-  onOpenSku: (sku: string, readOnly?: boolean) => void
+  onOpenSku: (sku: string, procurementEditable: boolean, headerLabel: string) => void
 }) {
   return (
     <button
@@ -72,7 +73,8 @@ function SkuCardProcessed({
       onClick={() =>
         onOpenSku(
           resolveFulfillmentRowSkuId(sku.sku),
-          isFulfillmentProcessedSkuReadOnly(sku.oaLabel)
+          !isFulfillmentProcessedSkuReadOnly(sku.oaLabel),
+          fulfillmentSkuHeaderLabel(false, sku.oaLabel)
         )
       }
     >
@@ -106,9 +108,16 @@ function SkuCardProcessed({
 }
 
 export function MobileFulfillmentDataPanel({ panel }: MobileFulfillmentDataPanelProps) {
+  const role = useShortageStore((s) => s.role)
   const openProcurementSkuPage = useShortageStore((s) => s.openProcurementSkuPage)
-  const handleOpenSku = (skuId: string, readOnly?: boolean) =>
-    openProcurementSkuPage(skuId, { readOnly })
+  const handleOpenSku = (
+    skuId: string,
+    procurementEditable: boolean,
+    headerLabel: string
+  ) => {
+    const readOnly = role !== 'procurement' || !procurementEditable
+    openProcurementSkuPage(skuId, { readOnly, headerLabel })
+  }
   const [view, setView] = useState<SkuPanelView>('pending')
   const [processedHandling, setProcessedHandling] = useState<ProcessedHandlingView>('urgent')
 

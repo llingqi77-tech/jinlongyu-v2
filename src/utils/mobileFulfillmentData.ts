@@ -69,9 +69,38 @@ export function resolveFulfillmentRowSkuId(rowSku: string): string {
   return sep >= 0 ? rowSku.slice(0, sep) : rowSku
 }
 
-/** 履约面板已处理：审批中 / 已通过仅查看 */
+/** 履约面板已处理（采购）：审批中 / 已通过仅查看；已驳回可改 */
 export function isFulfillmentProcessedSkuReadOnly(oaLabel: string): boolean {
   return oaLabel === '审批中' || oaLabel === '已通过'
+}
+
+/** 履约卡片标签 → 采购填写页入口状态（待处理 → 待采购处理） */
+export function fulfillmentSkuHeaderLabel(pending: boolean, oaLabel?: string): string {
+  if (pending) return '待采购处理'
+  return oaLabel?.trim() || '待采购处理'
+}
+
+/** 与履约列表标签 / 入口状态一致的说明文案 */
+export function procurementSkuPageHint(
+  entryLabel: string,
+  opts: { readOnly: boolean; oaPreviewApproved?: boolean; oaPreviewRejected?: boolean }
+): string {
+  const { readOnly, oaPreviewApproved, oaPreviewRejected } = opts
+  if (oaPreviewApproved || entryLabel === '已通过') {
+    return 'OA 已通过，采购订单已生成，以下信息仅供查看'
+  }
+  if (oaPreviewRejected || entryLabel === '已驳回') {
+    return readOnly
+      ? '已驳回，以下信息仅供查看'
+      : '请根据驳回原因修改各 PO 后重新提交 OA'
+  }
+  if (entryLabel === '审批中') {
+    return 'OA 审批中，以下信息仅供查看'
+  }
+  if (readOnly) {
+    return '待采购处理，以下信息仅供查看'
+  }
+  return '需为每个 PO 选择履约方式并填写后提交'
 }
 
 function earliestDateFromLines(

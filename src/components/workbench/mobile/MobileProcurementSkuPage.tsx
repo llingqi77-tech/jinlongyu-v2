@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import type { ProcurementPoFormState } from '../../../types/shortage'
-import {
-  getProcurementSkuGroupForPage,
-  getProcurementSkuOaBucket,
-} from '../../../utils/shortageAggregations'
+import { getProcurementSkuGroupForPage, getProcurementSkuOaBucket } from '../../../utils/shortageAggregations'
+import { procurementSkuPageHint } from '../../../utils/mobileFulfillmentData'
 import { formatSkuProductTitle } from '../../../utils/productDisplay'
 import {
   createPoFormState,
@@ -24,10 +22,26 @@ type MobileProcurementSkuPageProps = {
   sku: string
 }
 
+function fallbackEntryLabelFromOaBucket(
+  bucket: ReturnType<typeof getProcurementSkuOaBucket>
+): string {
+  switch (bucket) {
+    case 'rejected':
+      return '已驳回'
+    case 'pending':
+      return '审批中'
+    case 'approved':
+      return '已通过'
+    default:
+      return '待采购处理'
+  }
+}
+
 export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps) {
   const orders = useShortageStore((s) => s.orders)
   const procurementOaPreview = useShortageStore((s) => s.procurementOaPreview)
   const procurementSkuReadOnly = useShortageStore((s) => s.procurementSkuReadOnly)
+  const procurementSkuHeaderLabel = useShortageStore((s) => s.procurementSkuHeaderLabel)
   const closeProcurementSkuPage = useShortageStore((s) => s.closeProcurementSkuPage)
   const submitProcurementSkuBatch = useShortageStore((s) => s.submitProcurementSkuBatch)
   const setToast = useShortageStore((s) => s.setToast)
@@ -114,6 +128,13 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
 
   const showOaOverlay = oaPreviewMode && oaOverlayModel != null && !oaOverlayDismissed
   const oaReopenLabel = oaPreviewApproved ? '查看采购订单' : '查看原采购订单'
+  const entryLabel =
+    procurementSkuHeaderLabel ?? fallbackEntryLabelFromOaBucket(oaBucket)
+  const pageHint = procurementSkuPageHint(entryLabel, {
+    readOnly: formReadOnly,
+    oaPreviewApproved,
+    oaPreviewRejected,
+  })
 
   const firstPoLineId = poRowsByDdl[0]?.lineId
 
@@ -207,19 +228,11 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
       </header>
 
       <div className="mobile-procurement-page__body">
-        {formReadOnly ? (
-          <p className="mobile-procurement-page__hint mobile-procurement-page__hint--readonly">
-            {oaPreviewApproved || oaBucket === 'approved'
-              ? 'OA 已通过，采购订单已生成，以下信息仅供查看'
-              : 'OA 审批中，以下信息仅供查看'}
-          </p>
-        ) : (
-          <p className="mobile-procurement-page__hint">
-            {oaPreviewRejected || oaBucket === 'rejected'
-              ? '请根据驳回原因修改各 PO 后重新提交 OA'
-              : '需为每个 PO 选择履约方式并填写后提交'}
-          </p>
-        )}
+        <p
+          className={`mobile-procurement-page__hint${formReadOnly ? ' mobile-procurement-page__hint--readonly' : ''}`}
+        >
+          {pageHint}
+        </p>
         {poRowsByDdl.map((row) => (
           <MobileProcurementPoRow
             key={row.lineId}

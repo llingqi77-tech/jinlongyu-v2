@@ -3498,8 +3498,57 @@
   min-width: 0;
 }
 
+.platform-mobile .mobile-procurement-page__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.platform-mobile .mobile-procurement-page__status {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.platform-mobile .mobile-procurement-page__status--pending {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-color: #a5b4fc;
+}
+
+.platform-mobile .mobile-procurement-page__status--oa_rejected {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.platform-mobile .mobile-procurement-page__status--oa_pending {
+  background: #fef9c3;
+  color: #a16207;
+  border-color: #fde047;
+}
+
+.platform-mobile .mobile-procurement-page__status--oa_approved {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+
+.platform-mobile .mobile-procurement-page__status--default {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
 .platform-mobile .mobile-procurement-page__title {
   margin: 0;
+  flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.35;

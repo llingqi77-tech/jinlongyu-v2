@@ -131,12 +131,14 @@ export function sendSalesHotelPanelAction(userLabel: string, command: string) {
     )
     if (existing) {
       state.patchSalesHotelPanelMessage(existing.id, reply.text, reply.panel)
+      state.bumpMobileChatScrollToTop()
       return
     }
   }
 
   state.appendMobileChat({ side: 'user', content: userLabel })
   appendAgentReply(state, { text: reply.text, salesHotelPanel: reply.panel }, true)
+  state.bumpMobileChatScrollToTop()
 }
 
 export function handleMobileUserMessage(text: string): DialogueResult {
