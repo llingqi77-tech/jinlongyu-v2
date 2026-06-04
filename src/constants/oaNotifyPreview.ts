@@ -8,5 +8,5 @@ export const OA_NOTIFY_PREVIEW_REJECT_REASON =
 
 export function oaNotifyPreviewDeliveryLabel(ref = new Date()): string {
   const yesterday = addCalendarDays(ref, -1)
-  return `${yesterday.slice(5)}（昨日）`
+  return yesterday.slice(5)
 }

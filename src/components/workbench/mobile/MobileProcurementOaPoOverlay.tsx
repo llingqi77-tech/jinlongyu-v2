@@ -67,7 +67,7 @@ export function MobileProcurementOaPoOverlay({ model, onDismiss }: MobileProcure
           <dd>{model.spec}</dd>
         </div>
         <div className="mobile-procurement-oa-po__meta-row">
-          <dt>要求交货期</dt>
+          <dt>预计交货期</dt>
           <dd>{model.requiredDeliveryLabel}</dd>
         </div>
         <div className="mobile-procurement-oa-po__meta-row">

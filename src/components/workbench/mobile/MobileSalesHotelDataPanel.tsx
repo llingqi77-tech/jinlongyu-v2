@@ -32,7 +32,7 @@ function formatHotelPanelLineDetail(line: SalesHotelLineItem, tone: SalesHotelCh
     return (
       <>
         缺 {line.gap}
-        {line.unit} · 交期 {deferDetail.deliveryLabel}，采购预计{' '}
+        {line.unit} · 最早交期 {deferDetail.deliveryLabel}，采购预计{' '}
         <span
           className={deferDetail.etaLate ? 'mobile-sales-hotel-panel__eta--late' : undefined}
         >
@@ -46,14 +46,14 @@ function formatHotelPanelLineDetail(line: SalesHotelLineItem, tone: SalesHotelCh
     return (
       <>
         缺 {line.gap}
-        {line.unit} · 交期 {delivery} · 采购预计 {line.eta.slice(5)} 到货
+        {line.unit} · 最早交期 {delivery} · 采购预计 {line.eta.slice(5)} 到货
       </>
     )
   }
   return (
     <>
       缺 {line.gap}
-      {line.unit} · 交期 {delivery}
+      {line.unit} · 最早交期 {delivery}
     </>
   )
 }
@@ -134,65 +134,122 @@ function SalesHotelOverviewPanel({
   panel: Extract<SalesHotelDataPanelState, { level: 'overview' }>
 }) {
   const [expandedHotelKey, setExpandedHotelKey] = useState<string | null>(null)
+  const [searchText, setSearchText] = useState('')
+  const [hotelFilter, setHotelFilter] = useState<'processed' | 'pending' | null>(null)
+
+  const filteredHotels = useMemo(() => {
+    if (!hotelFilter) return []
+    const keyword = searchText.trim()
+    const hotels = panel.hotels.filter((row) =>
+      hotelFilter === 'processed' ? row.processed : !row.processed
+    )
+    if (!keyword) return hotels
+    return hotels.filter((row) => row.hotelName.includes(keyword))
+  }, [hotelFilter, panel.hotels, searchText])
 
   const toggleHotel = (hotelKey: string) => {
     setExpandedHotelKey((prev) => (prev === hotelKey ? null : hotelKey))
   }
 
+  const openHotelFilter = (filter: 'processed' | 'pending') => {
+    setHotelFilter(filter)
+    setSearchText('')
+    setExpandedHotelKey(null)
+  }
+
   return (
     <div className="mobile-sales-hotel-panel" role="group" aria-label="按酒店数据总览">
-      <div className="mobile-sales-hotel-panel__stats" aria-label="今日缺货概览">
-        <div className="mobile-sales-hotel-panel__stat">
-          <span className="mobile-sales-hotel-panel__stat-value">{panel.skuCount}</span>
-          <span className="mobile-sales-hotel-panel__stat-label">今日缺货品</span>
-        </div>
-        <div className="mobile-sales-hotel-panel__stat">
-          <span className="mobile-sales-hotel-panel__stat-value">{panel.hotelCount}</span>
-          <span className="mobile-sales-hotel-panel__stat-label">涉及酒店</span>
-        </div>
+      <div className="mobile-sales-hotel-panel__hero" aria-label="今日缺货品">
+        <span className="mobile-sales-hotel-panel__hero-label">今日缺货品</span>
+        <span className="mobile-sales-hotel-panel__hero-value">{panel.skuCount}</span>
+      </div>
+      <div className="mobile-sales-hotel-panel__filters" aria-label="酒店处理状态">
+        <button
+          type="button"
+          className={`mobile-sales-hotel-panel__stat mobile-sales-hotel-panel__stat--processed${
+            hotelFilter === 'processed' ? ' mobile-sales-hotel-panel__stat--active' : ''
+          }`}
+          onClick={() => openHotelFilter('processed')}
+          aria-pressed={hotelFilter === 'processed'}
+        >
+          <span className="mobile-sales-hotel-panel__stat-value">{panel.processedHotelCount}</span>
+          <span className="mobile-sales-hotel-panel__stat-label">已处理酒店</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-sales-hotel-panel__stat mobile-sales-hotel-panel__stat--pending${
+            hotelFilter === 'pending' ? ' mobile-sales-hotel-panel__stat--active' : ''
+          }`}
+          onClick={() => openHotelFilter('pending')}
+          aria-pressed={hotelFilter === 'pending'}
+        >
+          <span className="mobile-sales-hotel-panel__stat-value">{panel.pendingHotelCount}</span>
+          <span className="mobile-sales-hotel-panel__stat-label">待处理酒店</span>
+        </button>
       </div>
       {panel.hotels.length === 0 ? (
         <p className="mobile-sales-hotel-panel__empty">今日暂无缺货记录。</p>
+      ) : hotelFilter == null ? (
+        <p className="mobile-sales-hotel-panel__empty">
+          点选「已处理酒店」或「待处理酒店」查看对应酒店列表。
+        </p>
       ) : (
-        <ul className="mobile-sales-hotel-panel__list">
-          {panel.hotels.map((row) => {
-            const isOpen = expandedHotelKey === row.hotelKey
-            return (
-              <li
-                key={row.hotelKey}
-                className={`mobile-sales-hotel-panel__item${isOpen ? ' mobile-sales-hotel-panel__item--open' : ''}`}
-              >
-                <button
-                  type="button"
-                  className={`mobile-sales-hotel-panel__row${isOpen ? ' mobile-sales-hotel-panel__row--open' : ''}`}
-                  aria-expanded={isOpen}
-                  onClick={() => toggleHotel(row.hotelKey)}
-                >
-                  <span className="mobile-sales-hotel-panel__row-text">
-                    <span className="mobile-sales-hotel-panel__row-label">{row.hotelName}</span>
-                    <span className="mobile-sales-hotel-panel__row-addr">{row.deliveryAddress}</span>
-                    <span className="mobile-sales-hotel-panel__row-meta">
-                      {row.pendingCount > 0 ? <span>{row.pendingCount} 待处理</span> : null}
-                      {row.deferCount > 0 ? (
-                        <span className="mobile-sales-hotel-panel__row-meta--defer">
-                          {row.deferCount} 延期
-                        </span>
-                      ) : null}
-                      {row.urgentCount > 0 ? <span>{row.urgentCount} 加急</span> : null}
-                    </span>
-                  </span>
-                  <span
-                    className={`mobile-sales-hotel-panel__chevron${isOpen ? ' mobile-sales-hotel-panel__chevron--open' : ''}`}
-                    aria-hidden
+        <>
+          <label className="mobile-sales-hotel-panel__search">
+            <span className="mobile-sales-hotel-panel__search-label">
+              搜索{hotelFilter === 'processed' ? '已处理' : '待处理'}酒店
+            </span>
+            <input
+              type="search"
+              value={searchText}
+              onChange={(event) => {
+                setSearchText(event.target.value)
+                setExpandedHotelKey(null)
+              }}
+              placeholder="输入酒店名称关键词"
+              aria-label="搜索酒店名称"
+            />
+          </label>
+          {filteredHotels.length === 0 ? (
+            <p className="mobile-sales-hotel-panel__empty">未找到匹配酒店。</p>
+          ) : (
+            <ul className="mobile-sales-hotel-panel__list">
+              {filteredHotels.map((row) => {
+                const isOpen = expandedHotelKey === row.hotelKey
+                return (
+                  <li
+                    key={row.hotelKey}
+                    className={`mobile-sales-hotel-panel__item${isOpen ? ' mobile-sales-hotel-panel__item--open' : ''}`}
                   >
-                    ›
-                  </span>
-                </button>
-                {isOpen ? <HotelInlineExpand hotelKey={row.hotelKey} /> : null}
-              </li>
-            )
-          })}
-        </ul>
+                    <button
+                      type="button"
+                      className={`mobile-sales-hotel-panel__row${isOpen ? ' mobile-sales-hotel-panel__row--open' : ''}`}
+                      aria-expanded={isOpen}
+                      onClick={() => toggleHotel(row.hotelKey)}
+                    >
+                      <span className="mobile-sales-hotel-panel__row-text">
+                        <span className="mobile-sales-hotel-panel__row-title">
+                          <span className="mobile-sales-hotel-panel__row-label">{row.hotelName}</span>
+                        </span>
+                        <span className="mobile-sales-hotel-panel__row-addr">{row.deliveryAddress}</span>
+                        <span className="mobile-sales-hotel-panel__row-meta">
+                          <span>{row.lineCount} 个缺货品</span>
+                        </span>
+                      </span>
+                      <span
+                        className={`mobile-sales-hotel-panel__chevron${isOpen ? ' mobile-sales-hotel-panel__chevron--open' : ''}`}
+                        aria-hidden
+                      >
+                        ›
+                      </span>
+                    </button>
+                    {isOpen ? <HotelInlineExpand hotelKey={row.hotelKey} /> : null}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </>
       )}
     </div>
   )

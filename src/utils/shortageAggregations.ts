@@ -93,11 +93,11 @@ function filterDailyLines(lines: ShortageLineWithPo[], ref = new Date()): Shorta
   return lines.filter((l) => isDeliveryToday(l.po.requiredDeliveryDate, ref))
 }
 
-/** 采购任务清单：今日起 3 日内交期的 PO */
+/** 采购任务清单：今日起 7 日内交期的 PO（含演示错开至 +6 日） */
 export function isProcurementTaskHorizon(requiredDate: string, ref = new Date()): boolean {
   const key = toDateKey(requiredDate)
   const start = toDateKey(ref)
-  const end = toDateKey(addCalendarDays(ref, 2))
+  const end = toDateKey(addCalendarDays(ref, 6))
   return key >= start && key <= end
 }
 
@@ -309,6 +309,19 @@ export function isProcurementSkuAwaitingForm(
     (l) => l.sku === group.sku
   )
   return skuLines.some(isSkuAwaitingProcurementForm)
+}
+
+/** 任务清单卡片：仅统计待填写 / OA 驳回行的最早交期 */
+export function getSkuEarliestAwaitingFormDate(
+  group: ProcurementSkuGroup,
+  orders: ShortagePO[],
+  refDate = new Date()
+): string {
+  const dates = filterProcurementTaskLines(getShortageLines(orders), refDate)
+    .filter((l) => l.sku === group.sku && isSkuAwaitingProcurementForm(l))
+    .map((l) => l.po.requiredDeliveryDate)
+  if (dates.length === 0) return group.earliestRequiredDate
+  return dates.reduce((min, d) => (d < min ? d : min))
 }
 
 export function resolveSkuOverviewStatus(
@@ -1032,10 +1045,14 @@ export function sortProcurementSkuGroups(
     return copy.sort((a, b) => {
       const oaDiff = procurementSkuOaRank(a, orders) - procurementSkuOaRank(b, orders)
       if (oaDiff !== 0) return oaDiff
-      return a.earliestRequiredDate.localeCompare(b.earliestRequiredDate)
+      return getSkuEarliestAwaitingFormDate(a, orders).localeCompare(
+        getSkuEarliestAwaitingFormDate(b, orders)
+      )
     })
   }
-  return copy.sort((a, b) => a.earliestRequiredDate.localeCompare(b.earliestRequiredDate))
+  return copy.sort((a, b) =>
+    getSkuEarliestAwaitingFormDate(a, orders).localeCompare(getSkuEarliestAwaitingFormDate(b, orders))
+  )
 }
 
 export function getProcurementSkuGroup(
@@ -1088,12 +1105,12 @@ export function formatMostUrgentProcurementReply(groups: ProcurementSkuGroup[]):
   const dateLabel = groups[0].earliestRequiredDate.slice(5)
   if (groups.length === 1) {
     const g = groups[0]
-    return `最紧急的是「${g.productName}」：该品下最早 PO 交期 ${dateLabel}，共缺 ${g.totalGap}${g.unit}（${g.lineCount} 个 PO）。`
+    return `最紧急的是「${g.productName}」：该品下最早酒店 PO 交期 ${dateLabel}，共缺 ${g.totalGap}${g.unit}（涉及 ${g.lineCount} 个酒店 PO）。`
   }
 
   const lines = groups.map(
     (g, i) =>
-      `${i + 1}. ${g.productName}（${g.spec} · 最早交期 ${g.earliestRequiredDate.slice(5)} · 共缺 ${g.totalGap}${g.unit} · ${g.lineCount} 个 PO）`
+      `${i + 1}. ${g.productName}（${g.spec} · 最早交期 ${g.earliestRequiredDate.slice(5)} · 共缺 ${g.totalGap}${g.unit} · 涉及 ${g.lineCount} 个酒店 PO）`
   )
   return `最紧急交期 ${dateLabel}，以下 ${groups.length} 个品并列：\n${lines.join('\n')}`
 }

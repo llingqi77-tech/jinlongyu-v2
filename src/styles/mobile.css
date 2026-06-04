@@ -434,8 +434,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 100%;
-  max-width: min(19rem, 100%);
+  width: min(19rem, 100%);
+  max-width: 100%;
   margin: 0 0 14px;
 }
 
@@ -538,6 +538,179 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* —— 缺货品履约：品类仪表盘 —— */
+.platform-mobile .mobile-fulfillment-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-brand-dark, #e64500);
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__summary {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: stretch;
+  gap: 0;
+  padding: 12px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 77, 0, 0.22);
+  background: linear-gradient(180deg, #fffaf5 0%, #fff 100%);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__summary-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  text-align: center;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__summary-cell--pending
+  .mobile-fulfillment-dashboard__summary-value {
+  color: #c2410c;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__summary-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--color-brand-dark, #e64500);
+  font-variant-numeric: tabular-nums;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__summary-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__summary-divider {
+  width: 1px;
+  margin: 2px 0;
+  background: rgba(255, 77, 0, 0.18);
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__caption {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-top-width: 3px;
+  border-top-color: var(--color-brand, #ff4d00);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card--oil {
+  border-top-color: #ea580c;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card--rice {
+  border-top-color: #ca8a04;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card--noodle {
+  border-top-color: #d97706;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card--dry_spice {
+  border-top-color: #b45309;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card--other {
+  border-top-color: #64748b;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card:active {
+  border-color: rgba(255, 77, 0, 0.35);
+  background: #fffaf5;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__card-chevron {
+  font-size: 16px;
+  color: var(--color-muted);
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 2px;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__metric--pending {
+  background: #fff7ed;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__metric-value {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__metric--pending .mobile-fulfillment-dashboard__metric-value {
+  color: #c2410c;
+}
+
+.platform-mobile .mobile-fulfillment-dashboard__metric-label {
+  font-size: 10px;
+  color: var(--color-muted);
+  white-space: nowrap;
 }
 
 .platform-mobile .mobile-fulfillment-panel__list {
@@ -717,38 +890,82 @@
   color: var(--color-brand-dark, #e64500);
 }
 
-.platform-mobile .mobile-fulfillment-panel__handling-tabs {
+.platform-mobile .mobile-fulfillment-panel__handling-chips {
   display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin: -4px 0 8px;
+  min-width: 0;
 }
 
-.platform-mobile .mobile-fulfillment-panel__handling-tab {
+.platform-mobile .mobile-fulfillment-panel__handling-chip {
   flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 8px;
   font-size: 12px;
   font-weight: 600;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  color: var(--color-muted);
-  background: #f8fafc;
-}
-
-.platform-mobile .mobile-fulfillment-panel__handling-tab--active {
-  color: var(--color-ink);
-  border-color: rgba(255, 77, 0, 0.35);
+  line-height: 1.2;
+  border-radius: 6px;
+  border: 1px solid transparent;
   background: #fff;
-  box-shadow: 0 0 0 1px rgba(255, 77, 0, 0.08);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
 }
 
-.platform-mobile .mobile-fulfillment-panel__handling-tab:not(.mobile-fulfillment-panel__handling-tab--active)
-  .mobile-fulfillment-panel__view-count {
-  background: #e2e8f0;
-  color: var(--color-muted);
+.platform-mobile .mobile-fulfillment-panel__handling-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.platform-mobile .mobile-fulfillment-panel__handling-chip--urgent {
+  border-color: #c7d2fe;
+  color: #4338ca;
+}
+
+.platform-mobile .mobile-fulfillment-panel__handling-chip--urgent.mobile-fulfillment-panel__handling-chip--active {
+  background: #eef2ff;
+  border-color: #6366f1;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.2);
+}
+
+.platform-mobile .mobile-fulfillment-panel__handling-chip--defer {
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.platform-mobile .mobile-fulfillment-panel__handling-chip--defer.mobile-fulfillment-panel__handling-chip--active {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.2);
+}
+
+.platform-mobile .mobile-fulfillment-panel__handling-chip-count {
+  min-width: 16px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  font-variant-numeric: tabular-nums;
+}
+
+.platform-mobile
+  .mobile-fulfillment-panel__handling-chip--urgent.mobile-fulfillment-panel__handling-chip--active
+  .mobile-fulfillment-panel__handling-chip-count {
+  background: rgba(99, 102, 241, 0.15);
+  color: #4338ca;
+}
+
+.platform-mobile
+  .mobile-fulfillment-panel__handling-chip--defer.mobile-fulfillment-panel__handling-chip--active
+  .mobile-fulfillment-panel__handling-chip-count {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
 }
 
 .platform-mobile .mobile-fulfillment-panel__tags {
@@ -813,8 +1030,9 @@
 }
 
 /* —— 销售：按酒店数据总览（对话内嵌，可层层展开） —— */
-.platform-mobile .chat-message__bubble--card .mobile-sales-hotel-panel__intro {
-  margin: 0 0 10px;
+.platform-mobile .chat-message__bubble--card .mobile-sales-hotel-panel__intro,
+.platform-mobile .chat-message__bubble--card .mobile-procurement-task-panel__intro {
+  margin: 0 0 6px;
   font-size: 13px;
   line-height: 1.45;
   color: var(--color-ink);
@@ -824,12 +1042,37 @@
 .platform-mobile .mobile-sales-hotel-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
-.platform-mobile .mobile-sales-hotel-panel__stats {
+.platform-mobile .mobile-sales-hotel-panel__hero {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.platform-mobile .mobile-sales-hotel-panel__hero-label {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-brand-dark, #e64500);
+}
+
+.platform-mobile .mobile-sales-hotel-panel__hero-value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-brand-dark, #e64500);
+}
+
+.platform-mobile .mobile-sales-hotel-panel__filters {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -838,12 +1081,51 @@
   text-align: center;
   border-radius: 10px;
   border: 1px solid rgba(255, 77, 0, 0.22);
-  background: linear-gradient(180deg, #fff4eb 0%, #ffe8d6 100%);
+  background: #fff;
+}
+
+button.mobile-sales-hotel-panel__stat {
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.mobile-sales-hotel-panel__stat:active {
+  transform: translateY(1px);
+}
+
+.platform-mobile .mobile-sales-hotel-panel__stat--active {
+  box-shadow: 0 0 0 2px rgba(255, 77, 0, 0.16);
+}
+
+.platform-mobile .mobile-sales-hotel-panel__stat--processed {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+}
+
+.platform-mobile .mobile-sales-hotel-panel__stat--processed
+  .mobile-sales-hotel-panel__stat-value,
+.platform-mobile .mobile-sales-hotel-panel__stat--processed
+  .mobile-sales-hotel-panel__stat-label {
+  color: #15803d;
+}
+
+.platform-mobile .mobile-sales-hotel-panel__stat--pending {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.platform-mobile .mobile-sales-hotel-panel__stat--pending
+  .mobile-sales-hotel-panel__stat-value,
+.platform-mobile .mobile-sales-hotel-panel__stat--pending
+  .mobile-sales-hotel-panel__stat-label {
+  color: #b45309;
 }
 
 .platform-mobile .mobile-sales-hotel-panel__stat-value {
   display: block;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1.2;
   color: var(--color-brand-dark, #e64500);
@@ -852,10 +1134,43 @@
 .platform-mobile .mobile-sales-hotel-panel__stat-label {
   display: block;
   margin-top: 2px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--color-brand-dark, #e64500);
   opacity: 0.85;
+}
+
+.platform-mobile .mobile-sales-hotel-panel__search {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.platform-mobile .mobile-sales-hotel-panel__search-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
+.platform-mobile .mobile-sales-hotel-panel__search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--color-ink);
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  outline: none;
+}
+
+.platform-mobile .mobile-sales-hotel-panel__search input:focus {
+  border-color: rgba(255, 77, 0, 0.45);
+  box-shadow: 0 0 0 2px rgba(255, 77, 0, 0.1);
 }
 
 .platform-mobile .mobile-sales-hotel-panel__list {
@@ -924,7 +1239,16 @@
   gap: 3px;
 }
 
+.platform-mobile .mobile-sales-hotel-panel__row-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .platform-mobile .mobile-sales-hotel-panel__row-label {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   font-weight: 700;
   color: var(--color-ink);
@@ -1816,19 +2140,24 @@
   max-width: calc(100vw - 2 * var(--mobile-page-pad));
 }
 
-.platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__body--card) {
-  width: fit-content;
+.platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__bubble--card) {
+  width: min(19rem, 100%);
   max-width: min(19rem, calc(100vw - 2 * var(--mobile-page-pad) - 2rem));
 }
 
-.platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__body--card) .chat-message__grid {
-  width: fit-content;
+.platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__bubble--card) .chat-message__grid {
+  width: 100%;
   max-width: 100%;
 }
 
-.platform-mobile .mobile-chat-thread .chat-message__body-cell.chat-message__body--card {
-  width: fit-content;
+.platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__bubble--card) .chat-message__body-cell {
+  width: 100%;
   max-width: 100%;
+}
+
+.platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__bubble--card) .chat-message__bubble--card {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .platform-mobile .mobile-chat-thread .chat-message--time-only .chat-message__bubble {
@@ -1948,12 +2277,24 @@
   color: var(--color-muted);
 }
 
-.platform-mobile .mobile-task-list-block {
-  margin-top: 4px;
+.platform-mobile .chat-message__bubble--card:has(.mobile-task-list-section),
+.platform-mobile .chat-message__bubble--card:has(.mobile-sales-hotel-panel) {
+  padding: 8px 10px;
 }
 
-.platform-mobile .mobile-task-list-block__title {
-  margin: 0 0 8px 4px;
+.platform-mobile .mobile-task-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.platform-mobile .mobile-task-list-section__title {
+  margin: 0;
   font-size: 14px;
   font-weight: 700;
   line-height: 1.3;
@@ -1961,23 +2302,16 @@
   text-align: left;
 }
 
-.platform-mobile .mobile-task-list-block__title-note {
+.platform-mobile .mobile-task-list-section__title-note {
   margin-left: 4px;
   font-size: 12px;
   font-weight: 500;
   color: var(--color-muted);
 }
 
-.platform-mobile .mobile-task-list-section {
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 77, 0, 0.35);
-  background: var(--color-brand-light, rgba(255, 77, 0, 0.1));
-}
-
 .platform-mobile .mobile-task-list-section__category-tabs {
   display: flex;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
   flex-wrap: nowrap;
   gap: 6px;
   overflow-x: auto;
@@ -2021,7 +2355,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .platform-mobile .mobile-task-list-section__tab {
@@ -3572,10 +3906,244 @@
   gap: 10px;
 }
 
+.platform-mobile .mobile-procurement-page__body--details {
+  background: #f8fafc;
+}
+
+.platform-mobile .mobile-procurement-page__hint-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .platform-mobile .mobile-procurement-page__hint {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 12px;
   color: var(--color-muted);
+}
+
+.platform-mobile .mobile-procurement-page__detail-link {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-brand-dark, #e64500);
+  background: #fff4eb;
+  border: 1px solid rgba(255, 77, 0, 0.22);
+  border-radius: 999px;
+}
+
+.platform-mobile .mobile-procurement-page__detail-link:active {
+  background: #ffe8d6;
+}
+
+.platform-mobile .procurement-sku-form-card {
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #eef1f4;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.platform-mobile .procurement-sku-form-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.platform-mobile .procurement-sku-form-card__head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.platform-mobile .procurement-sku-form-card__head p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+
+.platform-mobile .procurement-sku-form-card__head > span {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-brand-dark, #e64500);
+  background: #fff4eb;
+  border: 1px solid rgba(255, 77, 0, 0.2);
+  border-radius: 999px;
+}
+
+.platform-mobile .procurement-sku-margin {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  text-align: left;
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+
+.platform-mobile button.procurement-sku-margin {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.platform-mobile button.procurement-sku-margin:active {
+  transform: translateY(1px);
+}
+
+.platform-mobile .procurement-sku-margin--warning {
+  color: #b91c1c;
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.platform-mobile .procurement-sku-margin__label,
+.platform-mobile .procurement-sku-margin__hint {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.platform-mobile .procurement-sku-margin strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.platform-mobile .procurement-sku-margin__cta {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.platform-mobile .procurement-po-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.platform-mobile .procurement-po-detail-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0 4px;
+}
+
+.platform-mobile .procurement-po-detail-section__head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.platform-mobile .procurement-po-detail-section__head span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-brand-dark, #e64500);
+}
+
+.platform-mobile .procurement-po-detail-section__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  color: var(--color-ink);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.platform-mobile .procurement-po-detail-section__toggle span {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.platform-mobile .procurement-po-detail-section__toggle strong {
+  font-size: 12px;
+  color: var(--color-brand-dark, #e64500);
+}
+
+.platform-mobile .procurement-po-detail-section__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.platform-mobile .procurement-po-detail-card {
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #eef1f4;
+  border-radius: 12px;
+}
+
+.platform-mobile .procurement-po-detail-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.platform-mobile .procurement-po-detail-card__hotel {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.platform-mobile .procurement-po-detail-card__brief {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.platform-mobile .procurement-po-detail-card__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.platform-mobile .procurement-po-detail-card__grid div {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.platform-mobile .procurement-po-detail-card__grid dt {
+  color: var(--color-muted);
+}
+
+.platform-mobile .procurement-po-detail-card__grid dd {
+  margin: 0;
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.platform-mobile .procurement-po-detail-card__margin--negative {
+  color: #dc2626 !important;
+}
+
+.platform-mobile .procurement-po-detail-card__margin--positive {
+  color: #15803d !important;
 }
 
 .platform-mobile .mobile-procurement-page__footer {
@@ -3599,6 +4167,10 @@
   color: #fff;
   background: var(--color-brand, #ff4d00);
   border-radius: 8px;
+}
+
+.platform-mobile .mobile-procurement-page__hint-row .mobile-procurement-page__hint--readonly {
+  margin: 0;
 }
 
 .platform-mobile .mobile-procurement-page--oa-open .mobile-procurement-page__body {
@@ -3682,13 +4254,13 @@
 
 .platform-mobile .mobile-procurement-oa-po--approved {
   padding: 32px 12px 12px;
-  background: #fff8f3;
-  border-color: rgba(255, 77, 0, 0.35);
-  box-shadow: 0 -4px 24px rgba(255, 77, 0, 0.12), 0 8px 28px rgba(255, 77, 0, 0.1);
+  background: #f0fdf4;
+  border-color: rgba(22, 163, 74, 0.4);
+  box-shadow: 0 -4px 24px rgba(22, 163, 74, 0.14), 0 8px 28px rgba(22, 163, 74, 0.1);
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__close {
-  color: var(--color-brand, #ff4d00);
+  color: #15803d;
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__banner {
@@ -3696,11 +4268,11 @@
   padding: 8px 10px;
   font-size: 14px;
   color: #fff;
-  background: linear-gradient(90deg, #ff4d00 0%, #ff6b2e 100%);
+  background: linear-gradient(90deg, #15803d 0%, #22c55e 100%);
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__banner-icon {
-  color: var(--color-brand, #ff4d00);
+  color: #16a34a;
   background: #fff;
 }
 
@@ -3714,42 +4286,44 @@
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__meta-row dt {
-  color: #ea580c;
+  color: #15803d;
   font-weight: 600;
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__suppliers-title {
   margin-bottom: 4px;
   font-size: 12px;
-  color: var(--color-brand, #ff4d00);
+  color: #16a34a;
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__supplier-list li {
   padding: 5px 0;
-  border-top-color: rgba(255, 77, 0, 0.12);
+  border-top-color: rgba(22, 163, 74, 0.16);
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__supplier-name {
   font-size: 13px;
-  color: #9a3412;
+  color: #166534;
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__total {
   margin-top: 4px;
   padding-top: 8px;
   font-size: 12px;
-  border-top-color: rgba(255, 77, 0, 0.22);
-  color: #9a3412;
+  border-top-color: rgba(22, 163, 74, 0.22);
+  color: #166534;
 }
 
 .platform-mobile .mobile-procurement-oa-po--approved .mobile-procurement-oa-po__total-amount {
   font-size: 17px;
-  color: var(--color-brand, #ff4d00);
+  color: #15803d;
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected {
   padding: 32px 12px 10px;
-  border-color: #fecaca;
+  background: #fef2f2;
+  border-color: #fca5a5;
+  box-shadow: 0 -4px 24px rgba(220, 38, 38, 0.12), 0 8px 28px rgba(220, 38, 38, 0.08);
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__close {
@@ -3760,8 +4334,14 @@
   margin-bottom: 6px;
   padding: 8px 10px;
   font-size: 14px;
-  color: #991b1b;
-  background: linear-gradient(90deg, #fee2e2 0%, #fef2f2 100%);
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(90deg, #b91c1c 0%, #dc2626 100%);
+}
+
+.platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__banner-icon--warn {
+  color: #b91c1c;
+  background: #fff;
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__reject-reason {
@@ -3769,6 +4349,9 @@
   padding: 6px 8px;
   font-size: 12px;
   line-height: 1.35;
+  color: #991b1b;
+  background: #fee2e2;
+  border-radius: 6px;
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__meta {
@@ -3780,28 +4363,38 @@
   font-size: 12px;
 }
 
+.platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__meta-row dt {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__suppliers-title {
   margin-bottom: 4px;
   font-size: 12px;
+  color: #b91c1c;
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__supplier-list li {
   padding: 5px 0;
+  border-top-color: rgba(220, 38, 38, 0.14);
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__supplier-name {
   font-size: 13px;
+  color: #7f1d1d;
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__total {
   margin-top: 4px;
   padding-top: 8px;
   font-size: 12px;
+  border-top-color: rgba(220, 38, 38, 0.2);
+  color: #7f1d1d;
 }
 
 .platform-mobile .mobile-procurement-oa-po--rejected .mobile-procurement-oa-po__total-amount {
   font-size: 17px;
-  color: #111827;
+  color: #b91c1c;
 }
 
 .platform-mobile .mobile-procurement-oa-po__close {
@@ -3980,8 +4573,16 @@
 }
 
 .platform-mobile .procurement-po-row__sales-ref {
-  font-weight: 400;
-  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .platform-mobile .procurement-po-row__margin {
@@ -3992,17 +4593,12 @@
   color: var(--color-brand-dark, #e64500);
 }
 
-.platform-mobile .procurement-po-row__margin--alert {
-  color: #dc2626;
-  font-weight: 700;
+.platform-mobile .procurement-po-row__margin--negative {
+  color: #15803d;
 }
 
-.platform-mobile .procurement-po-row__lead-hint {
-  margin: 8px 0 4px;
-  padding: 0 2px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--color-muted);
+.platform-mobile .procurement-po-row__margin--positive {
+  color: #dc2626;
 }
 
 .platform-mobile .procurement-po-row__field {
@@ -4014,16 +4610,24 @@
   color: var(--color-ink);
 }
 
-.platform-mobile .procurement-po-row__field input {
+.platform-mobile .procurement-po-row__field input,
+.platform-mobile .procurement-po-row__field textarea {
   width: 100%;
   padding: 10px;
   font-size: 14px;
+  font-family: inherit;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #fff;
 }
 
-.platform-mobile .procurement-po-row__field--readonly input {
+.platform-mobile .procurement-po-row__field textarea {
+  min-height: 42px;
+  resize: vertical;
+}
+
+.platform-mobile .procurement-po-row__field--readonly input,
+.platform-mobile .procurement-po-row__field--readonly textarea {
   background: #f8fafc;
   color: var(--color-muted);
 }

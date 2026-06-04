@@ -283,6 +283,7 @@ export interface SalesHotelOverviewRow {
   pendingCount: number
   deferCount: number
   urgentCount: number
+  processed: boolean
   nearestDelivery: string
 }
 
@@ -291,6 +292,8 @@ export type SalesHotelDataPanelState =
       level: 'overview'
       skuCount: number
       hotelCount: number
+      processedHotelCount: number
+      pendingHotelCount: number
       hotels: SalesHotelOverviewRow[]
     }
   | {
@@ -303,6 +306,8 @@ export type SalesHotelDataPanelState =
       urgentLines: SalesHotelLineItem[]
     }
 
+export type ProcurementTaskListPanelSort = 'delivery' | 'oa'
+
 export type MobileChatMessageKind =
   | 'text'
   | 'welcome_card'
@@ -312,6 +317,7 @@ export type MobileChatMessageKind =
   | 'supplier_options'
   | 'fulfillment_data_panel'
   | 'sales_hotel_data_panel'
+  | 'procurement_task_list_panel'
 
 export interface MobileSupplierOption {
   index: number
@@ -353,6 +359,7 @@ export interface MobileChatMessageMeta {
   actions?: MobileChatAction[]
   fulfillmentPanel?: FulfillmentDataPanelState
   salesHotelPanel?: SalesHotelDataPanelState
+  procurementListSort?: ProcurementTaskListPanelSort
 }
 
 export interface MobileChatMessage {
@@ -464,6 +471,7 @@ export interface SubmitProcurementSkuBatchRow {
   eta?: string
   deliveryMethod?: DeliveryMethod
   logisticsTrackingNo?: string
+  remark?: string
   actualFulfillQty: number
 }
 
@@ -479,6 +487,8 @@ export type ProcurementPoFormState = {
   eta: string
   deliveryMethod: DeliveryMethod
   logisticsTrackingNo: string
+  remark: string
+  actualFulfillQty: string
 }
 
 /** 角色选择页「OA 提醒通知」预览场景 */

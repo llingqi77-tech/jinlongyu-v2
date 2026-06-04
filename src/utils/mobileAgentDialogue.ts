@@ -54,7 +54,7 @@ function answerFaq(text: string, role: WorkbenchRole, store: ShortageState): str
   }
 
   if (/已提交|采购.*提交/.test(text)) {
-    return `今日采购已提交 ${kpis.procurementSubmittedCount} 个品。点击上方 KPI 可查看各品下的 PO 明细。`
+    return `今日采购已提交 ${kpis.procurementSubmittedCount} 个品。点击上方 KPI 可查看各品下的酒店 PO 明细。`
   }
 
   if (/闭环|签收|完成了多少/.test(text)) {
@@ -104,16 +104,27 @@ export function sendFulfillmentPanelAction(userLabel: string, command: string) {
 
   if (state.role === 'sales') state.setMobileSalesQuickView('fulfillment')
   if (state.role === 'procurement') state.setMobileProcurementQuickView('fulfillment')
-  state.appendMobileChat({ side: 'user', content: userLabel })
+  void userLabel
   const reply = fulfillmentReplyForCommand(command, state.orders)
   if (reply) {
     appendAgentReply(state, { text: reply.text, fulfillmentPanel: reply.panel }, true)
   }
 }
 
-function isSalesHotelOverviewRefreshCommand(command: string): boolean {
+function findLatestSalesHotelPanelMessageId(
+  messages: ShortageState['mobileChatMessages']
+): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.kind === 'sales_hotel_data_panel' && m.side === 'agent') return m.id
+  }
+  return undefined
+}
+
+function isSalesHotelPanelNavigateCommand(command: string): boolean {
   return (
-    command === `${SALES_HOTEL_CMD_PREFIX}open` || command === `${SALES_HOTEL_CMD_PREFIX}back`
+    command === `${SALES_HOTEL_CMD_PREFIX}back` ||
+    command.startsWith(`${SALES_HOTEL_CMD_PREFIX}hotel:`)
   )
 }
 
@@ -125,20 +136,42 @@ export function sendSalesHotelPanelAction(userLabel: string, command: string) {
   const reply = salesHotelReplyForCommand(command, state.orders)
   if (!reply) return
 
-  if (isSalesHotelOverviewRefreshCommand(command)) {
-    const existing = state.mobileChatMessages.find(
-      (m) => m.kind === 'sales_hotel_data_panel' && m.side === 'agent'
-    )
-    if (existing) {
-      state.patchSalesHotelPanelMessage(existing.id, reply.text, reply.panel)
-      state.bumpMobileChatScrollToTop()
+  if (command === `${SALES_HOTEL_CMD_PREFIX}open`) {
+    state.appendMobileChat({ side: 'user', content: userLabel })
+    appendAgentReply(state, { text: reply.text, salesHotelPanel: reply.panel }, true)
+    return
+  }
+
+  if (isSalesHotelPanelNavigateCommand(command)) {
+    const panelMessageId = findLatestSalesHotelPanelMessageId(state.mobileChatMessages)
+    if (panelMessageId) {
+      state.patchSalesHotelPanelMessage(panelMessageId, reply.text, reply.panel)
       return
     }
   }
 
   state.appendMobileChat({ side: 'user', content: userLabel })
   appendAgentReply(state, { text: reply.text, salesHotelPanel: reply.panel }, true)
-  state.bumpMobileChatScrollToTop()
+}
+
+export function sendProcurementTaskListPanelAction(
+  userLabel: string,
+  sort: 'delivery' | 'oa'
+) {
+  const state = useShortageStore.getState()
+  if (state.mobileOnboardingPhase !== 'ready') return
+
+  state.setMobileProcurementQuickView(sort)
+  const hasChatContext = state.mobileChatMessages.some(
+    (m) => !(m.kind === 'welcome_card' && m.side === 'agent')
+  )
+  if (!hasChatContext) {
+    state.bumpMobileChatScrollToTop()
+    return
+  }
+
+  void userLabel
+  appendAgentReply(state, { text: '', procurementListSort: sort }, false)
 }
 
 export function handleMobileUserMessage(text: string): DialogueResult {

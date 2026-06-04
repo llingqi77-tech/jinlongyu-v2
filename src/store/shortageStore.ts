@@ -2,6 +2,10 @@ import { create } from 'zustand'
 import { OA_NOTIFY_PREVIEW_SKU } from '../constants/oaNotifyPreview'
 import { buildOaNotifyPreviewOrders } from '../mocks/oaNotifyPreviewOrders'
 import { MOCK_SHORTAGE_ORDERS } from '../mocks/shortageOrders'
+import {
+  refreshProcurementDemoDeliveryDates,
+  refreshSalesHotelDemoDeliveryDates,
+} from '../mocks/refreshProcurementDemoDates'
 import type {
   ActivityEvent,
   MobileAgentPhase,
@@ -328,7 +332,11 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
   },
 
   loadTodayShortages: () => {
-    const orders = applyBackendLogisticsRouting(cloneOrders(MOCK_SHORTAGE_ORDERS))
+    const orders = refreshSalesHotelDemoDeliveryDates(
+      refreshProcurementDemoDeliveryDates(
+        applyBackendLogisticsRouting(cloneOrders(MOCK_SHORTAGE_ORDERS))
+      )
+    )
     set({
       orders,
       activityEvents: [
@@ -445,13 +453,16 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
           procurementOutcome: 'not_satisfied',
           fulfillmentMethod: 'defer',
           procurementMode: 'normal',
-          actualFulfillQty: 0,
+          actualFulfillQty: row.actualFulfillQty,
           supplierName: row.supplierName!.trim(),
           selectedSupplierId: supplier.id,
-          amount: Math.round(price * line.gap),
+          salesNote: row.remark?.trim() ?? '',
+          amount: Math.round(price * row.actualFulfillQty),
           procurementPrice: price,
           eta: row.eta!,
-          deliveryMethod: null,
+          deliveryMethod: row.deliveryMethod ?? 'warehouse',
+          logisticsTrackingNo:
+            row.deliveryMethod === 'direct' ? (row.logisticsTrackingNo?.trim() ?? '') : '',
           oaApprovalStatus: 'none',
           oaRequestNo: '',
           procurementDraftNo: '',
@@ -471,6 +482,7 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
         actualFulfillQty: row.actualFulfillQty,
         supplierName: row.supplierName!.trim(),
         selectedSupplierId: supplier.id,
+        salesNote: row.remark?.trim() ?? '',
         procurementPrice: row.price!,
         amount: Math.round(row.price! * row.actualFulfillQty),
         eta: row.eta!,
@@ -487,7 +499,7 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     get().pushActivity({
       actor: '采购',
       type: 'procurement',
-      content: `${productName} · ${rows.length} 个 PO 已处理`,
+      content: `${productName} · 涉及 ${rows.length} 个酒店 PO 已处理`,
       ref: { sku },
     })
 
@@ -526,10 +538,10 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     get().pushActivity({
       actor: '采购',
       type: 'procurement',
-      content: `${productName} 已提交 OA 审批 ${oaRequestNo}（${validIds.length} 个 PO）`,
+      content: `${productName} 已提交 OA 审批 ${oaRequestNo}（涉及 ${validIds.length} 个酒店 PO）`,
     })
     if (!options?.silent) {
-      get().setToast(`已整批提交 OA 审批（${validIds.length} 个 PO）`)
+      get().setToast(`已整批提交 OA 审批（涉及 ${validIds.length} 个酒店 PO）`)
     }
 
     window.setTimeout(() => {

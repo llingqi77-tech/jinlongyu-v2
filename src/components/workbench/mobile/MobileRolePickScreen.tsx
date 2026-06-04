@@ -46,7 +46,6 @@ export function MobileRolePickScreen() {
         <div className="mobile-role-pick__content">
           <p className="mobile-role-pick__greeting">你好～</p>
           <h1 className="mobile-role-pick__headline">我是智能履约助手</h1>
-          <p className="mobile-role-pick__intro">选择你的角色，我将为你激活专属工作台与对话能力。</p>
           <div className="mobile-role-pick__panel-head">
             <div>
               <h2 id="mobile-role-pick-title" className="mobile-role-pick__panel-title">

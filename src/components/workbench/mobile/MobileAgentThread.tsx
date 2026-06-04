@@ -6,8 +6,8 @@ import { StreamingText } from '../shared/StreamingText'
 import { MobileChatMessageGrid } from './MobileChatMessageGrid'
 import { MobileOrderInfoCard } from './MobileOrderInfoCard'
 import { MobileFulfillmentDataPanel } from './MobileFulfillmentDataPanel'
+import { MobileProcurementCardList } from './MobileProcurementCardList'
 import { MobileSalesHotelDataPanel } from './MobileSalesHotelDataPanel'
-import { MobileShortageHome } from './MobileShortageHome'
 
 export function MobileAgentThread() {
   const messages = useShortageStore((s) => s.mobileChatMessages)
@@ -89,14 +89,11 @@ export function MobileAgentThread() {
       {messages.map((msg) => {
         if (msg.kind === 'welcome_card' && msg.side === 'agent') {
           return (
-            <div key={msg.id} className="mobile-welcome-card-group">
-              {msg.timestamp ? (
-                <div className="mobile-welcome-card-group__time">
-                  <span className="chat-message__time">{msg.timestamp}</span>
-                </div>
-              ) : null}
-              <MobileShortageHome />
-            </div>
+            <MobileChatMessageGrid key={msg.id} side="agent" time={msg.timestamp}>
+              <div className="chat-message__bubble chat-message__bubble--agent chat-message__bubble--card">
+                <MobileProcurementCardList />
+              </div>
+            </MobileChatMessageGrid>
           )
         }
 
@@ -116,6 +113,31 @@ export function MobileAgentThread() {
                   </p>
                 ) : null}
                 <MobileSalesHotelDataPanel panel={msg.meta.salesHotelPanel} />
+              </div>
+            </MobileChatMessageGrid>
+          )
+        }
+
+        if (
+          msg.kind === 'procurement_task_list_panel' &&
+          msg.side === 'agent' &&
+          msg.meta?.procurementListSort
+        ) {
+          return (
+            <MobileChatMessageGrid key={msg.id} side="agent" time={msg.timestamp}>
+              <div className="chat-message__bubble chat-message__bubble--agent chat-message__bubble--card">
+                {msg.content ? (
+                  <p className="mobile-procurement-task-panel__intro">
+                    <StreamingText
+                      text={msg.content}
+                      active={msg.id === streamingId}
+                      onComplete={() => {
+                        if (msg.id === streamingId) setStreamingId(null)
+                      }}
+                    />
+                  </p>
+                ) : null}
+                <MobileProcurementCardList sortOverride={msg.meta.procurementListSort} />
               </div>
             </MobileChatMessageGrid>
           )
@@ -175,7 +197,8 @@ export function MobileAgentThread() {
               msg.kind !== 'welcome_card' &&
               msg.kind !== 'order_info' &&
               msg.kind !== 'fulfillment_data_panel' &&
-              msg.kind !== 'sales_hotel_data_panel'
+              msg.kind !== 'sales_hotel_data_panel' &&
+              msg.kind !== 'procurement_task_list_panel'
             }
             onStreamComplete={() => {
               if (msg.id === streamingId) setStreamingId(null)

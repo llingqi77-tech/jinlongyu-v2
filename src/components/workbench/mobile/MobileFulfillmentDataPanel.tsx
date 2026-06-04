@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShortageStore } from '../../../store/shortageStore'
 import type {
+  FulfillmentCategoryRow,
   FulfillmentDataPanelState,
   FulfillmentProcessedSkuRow,
   FulfillmentSkuRow,
+  ProductCategoryKey,
 } from '../../../types/shortage'
 import {
   FULFILLMENT_CMD_PREFIX,
@@ -20,6 +22,95 @@ type MobileFulfillmentDataPanelProps = {
 
 type SkuPanelView = 'pending' | 'processed'
 type ProcessedHandlingView = 'urgent' | 'defer'
+
+const CATEGORY_DASHBOARD_TONE: Record<ProductCategoryKey, string> = {
+  oil: 'oil',
+  rice: 'rice',
+  noodle: 'noodle',
+  dry_spice: 'dry_spice',
+  other: 'other',
+}
+
+function FulfillmentCategoryDashboard({ categories }: { categories: FulfillmentCategoryRow[] }) {
+  const summary = useMemo(
+    () => ({
+      total: categories.reduce((sum, row) => sum + row.totalSkuCount, 0),
+      pending: categories.reduce((sum, row) => sum + row.pendingSkuCount, 0),
+    }),
+    [categories]
+  )
+
+  if (categories.length === 0) {
+    return <p className="mobile-fulfillment-panel__empty">近 3 日交期内暂无缺货记录。</p>
+  }
+
+  return (
+    <div className="mobile-fulfillment-dashboard" role="group" aria-label="品类履约仪表盘">
+      <h3 className="mobile-fulfillment-dashboard__title">缺货品履约数据总览</h3>
+      <div className="mobile-fulfillment-dashboard__summary" aria-label="全品类汇总">
+        <div className="mobile-fulfillment-dashboard__summary-cell">
+          <span className="mobile-fulfillment-dashboard__summary-value">{summary.total}</span>
+          <span className="mobile-fulfillment-dashboard__summary-label">缺货品项</span>
+        </div>
+        <div className="mobile-fulfillment-dashboard__summary-divider" aria-hidden />
+        <div className="mobile-fulfillment-dashboard__summary-cell mobile-fulfillment-dashboard__summary-cell--pending">
+          <span className="mobile-fulfillment-dashboard__summary-value">{summary.pending}</span>
+          <span className="mobile-fulfillment-dashboard__summary-label">待处理</span>
+        </div>
+        <div className="mobile-fulfillment-dashboard__summary-divider" aria-hidden />
+        <div className="mobile-fulfillment-dashboard__summary-cell">
+          <span className="mobile-fulfillment-dashboard__summary-value">
+            {summary.total - summary.pending}
+          </span>
+          <span className="mobile-fulfillment-dashboard__summary-label">已提交</span>
+        </div>
+      </div>
+
+      <p className="mobile-fulfillment-dashboard__caption">按品类查看明细</p>
+
+      <div className="mobile-fulfillment-dashboard__grid">
+        {categories.map((row) => {
+          const processed = row.totalSkuCount - row.pendingSkuCount
+          return (
+            <button
+              key={row.key}
+              type="button"
+              className={`mobile-fulfillment-dashboard__card mobile-fulfillment-dashboard__card--${CATEGORY_DASHBOARD_TONE[row.key]}`}
+              onClick={() =>
+                sendFulfillmentPanelAction(row.label, `${FULFILLMENT_CMD_PREFIX}cat:${row.key}`)
+              }
+            >
+              <span className="mobile-fulfillment-dashboard__card-head">
+                <span className="mobile-fulfillment-dashboard__card-label">{row.label}</span>
+                <span className="mobile-fulfillment-dashboard__card-chevron" aria-hidden>
+                  ›
+                </span>
+              </span>
+              <div className="mobile-fulfillment-dashboard__metrics">
+                <div className="mobile-fulfillment-dashboard__metric">
+                  <span className="mobile-fulfillment-dashboard__metric-value">
+                    {row.totalSkuCount}
+                  </span>
+                  <span className="mobile-fulfillment-dashboard__metric-label">总品项</span>
+                </div>
+                <div className="mobile-fulfillment-dashboard__metric mobile-fulfillment-dashboard__metric--pending">
+                  <span className="mobile-fulfillment-dashboard__metric-value">
+                    {row.pendingSkuCount}
+                  </span>
+                  <span className="mobile-fulfillment-dashboard__metric-label">待处理</span>
+                </div>
+                <div className="mobile-fulfillment-dashboard__metric">
+                  <span className="mobile-fulfillment-dashboard__metric-value">{processed}</span>
+                  <span className="mobile-fulfillment-dashboard__metric-label">已提交</span>
+                </div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function pickDefaultProcessedHandling(skus: FulfillmentProcessedSkuRow[]): ProcessedHandlingView {
   const urgentCount = skus.filter((s) => s.handlingLabel === '加急').length
@@ -52,7 +143,7 @@ function SkuCardPending({
         {formatFulfillmentSkuSub(sku.totalGap, sku.unit, sku.lineCount, sku.unitPrice)}
       </span>
       <span className="mobile-fulfillment-panel__sku-delivery">
-        所有 PO 最早交期{' '}
+        最早交期{' '}
         <span className="mobile-fulfillment-panel__sku-delivery-date">{sku.earliestDelivery}</span>
       </span>
     </button>
@@ -100,7 +191,7 @@ function SkuCardProcessed({
         {formatFulfillmentSkuSub(sku.totalGap, sku.unit, sku.lineCount, sku.unitPrice)}
       </span>
       <span className="mobile-fulfillment-panel__sku-delivery">
-        所有 PO 最早交期{' '}
+        最早交期{' '}
         <span className="mobile-fulfillment-panel__sku-delivery-date">{sku.earliestDelivery}</span>
       </span>
     </button>
@@ -139,27 +230,7 @@ export function MobileFulfillmentDataPanel({ panel }: MobileFulfillmentDataPanel
   if (panel.level === 'categories') {
     return (
       <div className="mobile-fulfillment-panel" role="group" aria-label="缺货品履约数据">
-        <ul className="mobile-fulfillment-panel__list">
-          {panel.categories.map((row) => (
-            <li key={row.key}>
-              <button
-                type="button"
-                className="mobile-fulfillment-panel__row"
-                onClick={() =>
-                  sendFulfillmentPanelAction(row.label, `${FULFILLMENT_CMD_PREFIX}cat:${row.key}`)
-                }
-              >
-                <span className="mobile-fulfillment-panel__row-label">{row.label}</span>
-                <span className="mobile-fulfillment-panel__row-meta">
-                  共 {row.totalSkuCount} · 待处理 {row.pendingSkuCount}
-                </span>
-                <span className="mobile-fulfillment-panel__chevron" aria-hidden>
-                  ›
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <FulfillmentCategoryDashboard categories={panel.categories} />
       </div>
     )
   }
@@ -211,38 +282,34 @@ export function MobileFulfillmentDataPanel({ panel }: MobileFulfillmentDataPanel
         </div>
       ) : null}
       {view === 'processed' && processedSkus.length > 0 ? (
-        <div
-          className="mobile-fulfillment-panel__handling-tabs"
-          role="tablist"
-          aria-label="履约方式"
-        >
+        <div className="mobile-fulfillment-panel__handling-chips" role="group" aria-label="履约方式筛选">
           <button
             type="button"
-            role="tab"
-            aria-selected={processedHandling === 'urgent'}
-            className={`mobile-fulfillment-panel__handling-tab${
-              processedHandling === 'urgent' ? ' mobile-fulfillment-panel__handling-tab--active' : ''
+            aria-pressed={processedHandling === 'urgent'}
+            disabled={urgentProcessed.length === 0}
+            className={`mobile-fulfillment-panel__handling-chip mobile-fulfillment-panel__handling-chip--urgent${
+              processedHandling === 'urgent' ? ' mobile-fulfillment-panel__handling-chip--active' : ''
             }`}
             onClick={() => setProcessedHandling('urgent')}
           >
             加急
-            {urgentProcessed.length > 0 ? (
-              <span className="mobile-fulfillment-panel__view-count">{urgentProcessed.length}</span>
-            ) : null}
+            <span className="mobile-fulfillment-panel__handling-chip-count">
+              {urgentProcessed.length}
+            </span>
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={processedHandling === 'defer'}
-            className={`mobile-fulfillment-panel__handling-tab${
-              processedHandling === 'defer' ? ' mobile-fulfillment-panel__handling-tab--active' : ''
+            aria-pressed={processedHandling === 'defer'}
+            disabled={deferProcessed.length === 0}
+            className={`mobile-fulfillment-panel__handling-chip mobile-fulfillment-panel__handling-chip--defer${
+              processedHandling === 'defer' ? ' mobile-fulfillment-panel__handling-chip--active' : ''
             }`}
             onClick={() => setProcessedHandling('defer')}
           >
             延期
-            {deferProcessed.length > 0 ? (
-              <span className="mobile-fulfillment-panel__view-count">{deferProcessed.length}</span>
-            ) : null}
+            <span className="mobile-fulfillment-panel__handling-chip-count">
+              {deferProcessed.length}
+            </span>
           </button>
         </div>
       ) : null}

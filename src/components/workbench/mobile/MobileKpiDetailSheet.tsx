@@ -32,7 +32,7 @@ function kpiHint(kind: MobileKpiKind, count: number, role: WorkbenchRole): strin
     return `按品统计，共 ${count} 个品；展开查看各酒店 PO 的缺货与交期`
   }
   if (kind === 'submitted') {
-    return `按品统计，共 ${count} 个品；同一品整批 OA 审批，展开查看各 PO 采购确认信息`
+    return `按品统计，共 ${count} 个品；同一品整批 OA 审批，展开查看各酒店 PO 采购确认信息`
   }
   return `按品 → 客户订单统计，共 ${count} 行`
 }
@@ -109,7 +109,7 @@ function SkuGroupList({
   role: WorkbenchRole
 }) {
   const [expandedSku, setExpandedSku] = useState<string | null>(groups[0]?.sku ?? null)
-  const poUnit = role === 'sales' ? '笔订单' : '个 PO'
+  const poUnit = role === 'sales' ? '笔订单' : '个酒店 PO'
 
   if (groups.length === 0) {
     return <p className="mobile-kpi-detail__empty">暂无数据。</p>

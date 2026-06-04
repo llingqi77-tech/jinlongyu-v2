@@ -1,6 +1,7 @@
 import {
   sendFulfillmentPanelAction,
   sendMobileAgentMessage,
+  sendProcurementTaskListPanelAction,
   sendSalesHotelPanelAction,
 } from '../../../utils/mobileAgentDialogue'
 import { SALES_HOTEL_CMD_PREFIX } from '../../../utils/mobileSalesHotelData'
@@ -71,8 +72,7 @@ export function MobileQuickActions() {
             onClick={() => {
               const store = useShortageStore.getState()
               if (action.kind === 'procurement_sort' && action.procurementSort) {
-                store.setMobileProcurementQuickView(action.procurementSort)
-                store.bumpMobileChatScrollToTop()
+                sendProcurementTaskListPanelAction(action.label, action.procurementSort)
               } else if (action.kind === 'sales_hotel_overview') {
                 store.setMobileSalesQuickView('hotel_overview')
                 sendSalesHotelPanelAction('按酒店数据总览', `${SALES_HOTEL_CMD_PREFIX}open`)

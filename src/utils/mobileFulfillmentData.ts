@@ -25,7 +25,7 @@ export function formatFulfillmentSkuSub(
   lineCount: number,
   unitPrice: number
 ): string {
-  return `共缺 ${totalGap}${unit} · ${lineCount} 个 PO · 售价 ¥${unitPrice}/${unit}`
+  return `共缺 ${totalGap}${unit} · 涉及 ${lineCount} 个酒店 PO · 售价 ¥${unitPrice}/${unit}`
 }
 
 export function isFulfillmentCommand(text: string): boolean {
@@ -100,7 +100,7 @@ export function procurementSkuPageHint(
   if (readOnly) {
     return '待采购处理，以下信息仅供查看'
   }
-  return '需为每个 PO 选择履约方式并填写后提交'
+  return '需为每个酒店 PO 选择履约方式并填写后提交'
 }
 
 function earliestDateFromLines(

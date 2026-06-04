@@ -13,6 +13,8 @@ export function createPoFormState(
     eta: row.requiredDeliveryDate,
     deliveryMethod: 'warehouse',
     logisticsTrackingNo: '',
+    remark: '',
+    actualFulfillQty: String(row.gap),
   }
 }
 
@@ -31,6 +33,8 @@ export const PROCUREMENT_FIRST_PO_MIRROR_KEYS = [
   'eta',
   'deliveryMethod',
   'logisticsTrackingNo',
+  'remark',
+  'actualFulfillQty',
 ] as const satisfies readonly (keyof ProcurementPoFormState)[]
 
 export type ProcurementPoMirrorFields = Pick<
@@ -57,5 +61,7 @@ export function pickProcurementPoMirrorFields(
     eta: source.eta,
     deliveryMethod: source.deliveryMethod,
     logisticsTrackingNo: source.logisticsTrackingNo,
+    remark: source.remark,
+    actualFulfillQty: source.actualFulfillQty,
   }
 }

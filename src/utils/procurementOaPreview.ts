@@ -47,6 +47,8 @@ export function buildPoFormStateFromOrders(
       eta: line.eta || row.requiredDeliveryDate,
       deliveryMethod: line.deliveryMethod ?? 'warehouse',
       logisticsTrackingNo: line.logisticsTrackingNo ?? '',
+      remark: line.salesNote,
+      actualFulfillQty: String(line.actualFulfillQty || row.gap),
     }
   }
   return map

@@ -31,6 +31,10 @@ function deferLine(seed: LineSeed & { eta?: string }): ShortagePOLine {
     fulfillmentMethod: 'defer',
     procurementOutcome: 'not_satisfied',
     procurementMode: 'normal',
+    procurementConfirmed: false,
+    procurementDraftNo: `DRAFT-DEF-${seed.id.slice(-4)}`,
+    oaApprovalStatus: 'approved',
+    oaRequestNo: `OA-DEF-${seed.id.slice(-4)}`,
     status: 'await_logistics',
     eta: seed.eta ?? IN_TWO_DAYS,
     salesProcurementNotifiedAt: seed.salesProcurementNotifiedAt ?? notifyAtForSku(seed.sku),
@@ -130,6 +134,22 @@ export const MOCK_SALES_NOTICE_ORDERS: ShortagePO[] = [
     specialNote: '同一客户不同地址',
     requiredDeliveryDate: TODAY,
     lines: [
+      pendingLine({
+        id: 'L-SN-P002',
+        sku: 'JLY-10KG-003',
+        productName: '金龙鱼大米',
+        spec: '10kg/袋',
+        gap: 14,
+        unit: '袋',
+      }),
+      deferLine({
+        id: 'L-SN-D002',
+        sku: 'JLY-1L-002',
+        productName: '金龙鱼葵花籽油',
+        spec: '1.8L/瓶',
+        gap: 10,
+        unit: '瓶',
+      }),
       urgentLine({
         id: 'L-SN-004',
         sku: 'JLY-5L-001',
@@ -181,6 +201,14 @@ export const MOCK_SALES_NOTICE_ORDERS: ShortagePO[] = [
     specialNote: '',
     requiredDeliveryDate: TODAY,
     lines: [
+      deferLine({
+        id: 'L-SN-D004',
+        sku: 'JLY-10KG-003',
+        productName: '金龙鱼大米',
+        spec: '10kg/袋',
+        gap: 9,
+        unit: '袋',
+      }),
       urgentLine({ id: 'L-SN-009', sku: 'JLY-5L-001', productName: '金龙鱼食用调和油', gap: 10, unit: '桶' }),
       urgentLine({
         id: 'L-SN-010',
@@ -200,6 +228,14 @@ export const MOCK_SALES_NOTICE_ORDERS: ShortagePO[] = [
     specialNote: '',
     requiredDeliveryDate: TODAY,
     lines: [
+      pendingLine({
+        id: 'L-SN-P005',
+        sku: 'JLY-900ML-004',
+        productName: '金龙鱼压榨花生油',
+        spec: '900ml/瓶',
+        gap: 15,
+        unit: '瓶',
+      }),
       deferLine({ id: 'L-SN-011', sku: 'JLY-10KG-003', productName: '金龙鱼大米', spec: '10kg/袋', gap: 20, unit: '袋' }),
       deferLine({ id: 'L-SN-012', sku: 'JLY-1L-002', productName: '金龙鱼葵花籽油', gap: 14, unit: '瓶' }),
       urgentLine({ id: 'L-SN-013', sku: 'JLY-5L-001', productName: '金龙鱼食用调和油', gap: 8, unit: '桶' }),
@@ -213,6 +249,22 @@ export const MOCK_SALES_NOTICE_ORDERS: ShortagePO[] = [
     specialNote: '',
     requiredDeliveryDate: TODAY,
     lines: [
+      pendingLine({
+        id: 'L-SN-P006',
+        sku: 'JLY-1L-002',
+        productName: '金龙鱼葵花籽油',
+        spec: '1.8L/瓶',
+        gap: 12,
+        unit: '瓶',
+      }),
+      deferLine({
+        id: 'L-SN-D006',
+        sku: 'JLY-900ML-001',
+        productName: '金龙鱼花生油',
+        spec: '900ml/瓶',
+        gap: 8,
+        unit: '瓶',
+      }),
       urgentLine({ id: 'L-SN-014', sku: 'JLY-5L-001', productName: '金龙鱼食用调和油', gap: 32, unit: '桶' }),
       urgentLine({ id: 'L-SN-015', sku: 'JLY-10KG-003', productName: '金龙鱼大米', spec: '10kg/袋', gap: 25, unit: '袋' }),
     ],
@@ -227,6 +279,14 @@ export const MOCK_SALES_NOTICE_ORDERS: ShortagePO[] = [
     lines: [
       deferLine({ id: 'L-SN-016', sku: 'JLY-1L-002', productName: '金龙鱼葵花籽油', gap: 19, unit: '瓶' }),
       deferLine({ id: 'L-SN-017', sku: 'JLY-900ML-004', productName: '金龙鱼压榨花生油', spec: '900ml/瓶', gap: 11, unit: '瓶' }),
+      urgentLine({
+        id: 'L-SN-U007',
+        sku: 'JLY-10KG-003',
+        productName: '金龙鱼大米',
+        spec: '10kg/袋',
+        gap: 16,
+        unit: '袋',
+      }),
     ],
   },
   {

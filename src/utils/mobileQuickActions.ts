@@ -30,10 +30,7 @@ export interface MobileQuickActionItem {
   procurementSort?: 'delivery' | 'oa'
 }
 
-const SALES_QUICK_ACTIONS: MobileQuickActionItem[] = [
-  { id: 'hotel-overview', label: '按酒店数据总览', kind: 'sales_hotel_overview' },
-  { id: 'dashboard', label: '缺货品履约数据', kind: 'open_dashboard' },
-]
+const SALES_QUICK_ACTIONS: MobileQuickActionItem[] = []
 
 const PROCUREMENT_QUICK_ACTIONS: MobileQuickActionItem[] = [
   { id: 'delivery', label: '待办清单', kind: 'procurement_sort', procurementSort: 'delivery' },

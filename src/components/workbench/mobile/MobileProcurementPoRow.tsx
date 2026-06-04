@@ -4,8 +4,6 @@ import {
   PROCUREMENT_FULFILLMENT_CHOICE_LABEL,
 } from '../../../constants/shortageLabels'
 import { resolveActualFulfillQty } from '../../../utils/procurementFormDefaults'
-import { getSupplierLeadTimeDays } from '../../../utils/supplierRecommendations'
-
 function formatMargin(value: number): string {
   const rounded = Math.round(value * 100) / 100
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2)
@@ -13,7 +11,6 @@ function formatMargin(value: number): string {
 
 type MobileProcurementPoRowProps = {
   row: SkuHotelSubRow
-  sku: string
   form: ProcurementPoFormState
   onChange: (patch: Partial<ProcurementPoFormState>) => void
   readOnly?: boolean
@@ -21,7 +18,6 @@ type MobileProcurementPoRowProps = {
 
 export function MobileProcurementPoRow({
   row,
-  sku,
   form,
   onChange,
   readOnly = false,
@@ -30,16 +26,13 @@ export function MobileProcurementPoRow({
   const showProcurementFields =
     form.fulfillmentMode === 'urgent' || form.fulfillmentMode === 'defer'
   const isUrgent = form.fulfillmentMode === 'urgent'
-  const leadDays =
-    showProcurementFields && form.supplierName
-      ? getSupplierLeadTimeDays(sku, form.supplierName)
-      : null
 
   const procurementPrice = Number(form.price)
   const hasProcurementPrice =
     showProcurementFields && form.price !== '' && Number.isFinite(procurementPrice)
   const unitMargin = hasProcurementPrice ? row.unitPrice - procurementPrice : null
-  const marginNegative = unitMargin != null && unitMargin < 0
+  const marginTone =
+    unitMargin == null ? null : unitMargin < 0 ? 'negative' : unitMargin > 0 ? 'positive' : 'neutral'
 
   return (
     <div className={`procurement-po-row${readOnly ? ' procurement-po-row--readonly' : ''}`}>
@@ -49,7 +42,10 @@ export function MobileProcurementPoRow({
       <p className="procurement-po-row__addr">{row.deliveryAddress}</p>
       <p className="procurement-po-row__meta">
         需求 {row.gap}
-        {row.unit} · DDL {row.requiredDeliveryDate.slice(5)}
+        {row.unit} · 交期 {row.requiredDeliveryDate.slice(5)}
+        <span className="procurement-po-row__sales-ref">
+          售价 ¥{row.unitPrice}/{row.unit}
+        </span>
       </p>
 
       <div className="procurement-po-row__field">
@@ -103,13 +99,7 @@ export function MobileProcurementPoRow({
                 : 'procurement-po-row__field'
             }
           >
-            <span>
-              采购价格（元）
-              <span className="procurement-po-row__sales-ref">
-                {' '}
-                · 售价 ¥{row.unitPrice}/{row.unit}
-              </span>
-            </span>
+            <span>采购价格（元）</span>
             <input
               type="number"
               value={form.price}
@@ -120,9 +110,11 @@ export function MobileProcurementPoRow({
             {unitMargin != null ? (
               <p
                 className={
-                  marginNegative
-                    ? 'procurement-po-row__margin procurement-po-row__margin--alert'
-                    : 'procurement-po-row__margin'
+                  marginTone === 'negative'
+                    ? 'procurement-po-row__margin procurement-po-row__margin--negative'
+                    : marginTone === 'positive'
+                      ? 'procurement-po-row__margin procurement-po-row__margin--positive'
+                      : 'procurement-po-row__margin'
                 }
                 aria-live="polite"
               >
@@ -145,11 +137,6 @@ export function MobileProcurementPoRow({
               readOnly={readOnly}
             />
           </label>
-          {leadDays != null ? (
-            <p className="procurement-po-row__lead-hint">
-              该供应商常规供货周期约 {leadDays} 天，可按实际情况调整交期
-            </p>
-          ) : null}
           {isUrgent ? (
             <div className="procurement-po-row__field">
               <span>配送方式</span>

@@ -5,6 +5,7 @@ import {
   getPendingProcurementGroups,
   getProcurementSkuOaBucket,
   getProcurementSkuOaLabel,
+  getSkuEarliestAwaitingFormDate,
   isProcurementSkuAwaitingForm,
   isProcurementSkuPageReadOnly,
   sortProcurementSkuGroups,
@@ -21,9 +22,14 @@ const OA_TABS: { id: Exclude<ProcurementSkuOaBucket, 'none'>; label: string }[] 
   { id: 'approved', label: '已通过' },
 ]
 
-export function MobileProcurementCardList() {
+type MobileProcurementCardListProps = {
+  /** 对话内嵌面板使用消息上的排序，不读全局 store */
+  sortOverride?: 'delivery' | 'oa'
+}
+
+export function MobileProcurementCardList({ sortOverride }: MobileProcurementCardListProps = {}) {
   const orders = useShortageStore((s) => s.orders)
-  const sort = useShortageStore((s) => s.procurementListSort) ?? 'delivery'
+  const sort = sortOverride ?? useShortageStore((s) => s.procurementListSort) ?? 'delivery'
   const openProcurementSkuPage = useShortageStore((s) => s.openProcurementSkuPage)
   const [oaTab, setOaTab] = useState<Exclude<ProcurementSkuOaBucket, 'none'>>('rejected')
   const [categoryTab, setCategoryTab] = useState<ProductCategoryKey | null>(null)
@@ -87,18 +93,17 @@ export function MobileProcurementCardList() {
   const titleId = sortByOa ? 'mobile-task-list-oa-title' : 'mobile-task-list-todo-title'
 
   return (
-    <div className="mobile-task-list-block">
-      <h2 id={titleId} className="mobile-task-list-block__title">
+    <section className="mobile-task-list-section" aria-labelledby={titleId}>
+      <h2 id={titleId} className="mobile-task-list-section__title">
         {sortByOa ? (
           <>
             OA进度
-            <span className="mobile-task-list-block__title-note">（只统计已提交的）</span>
+            <span className="mobile-task-list-section__title-note">（只统计已提交的）</span>
           </>
         ) : (
           '待办清单'
         )}
       </h2>
-      <section className="mobile-task-list-section" aria-labelledby={titleId}>
         {!sortByOa && taskCount > 0 ? (
           <div
             className="mobile-task-list-section__category-tabs"
@@ -173,8 +178,7 @@ export function MobileProcurementCardList() {
           ))}
         </ol>
       ) : null}
-      </section>
-    </div>
+    </section>
   )
 }
 
@@ -191,7 +195,7 @@ function ProcurementTaskListItem({
   orders: ReturnType<typeof useShortageStore.getState>['orders']
   onOpen: () => void
 }) {
-  const deliveryDate = group.earliestRequiredDate.slice(5)
+  const deliveryDate = getSkuEarliestAwaitingFormDate(group, orders).slice(5)
   const oaBucket = sort === 'oa' ? getProcurementSkuOaBucket(group, orders) : null
   const oaLabel = oaBucket != null ? getProcurementSkuOaLabel(oaBucket) : null
 
@@ -210,16 +214,16 @@ function ProcurementTaskListItem({
             {formatSkuProductTitle(group.productName, group.spec)}
           </span>
           <span className="mobile-home-task-list__sub">
-            售价 ¥{group.unitPrice}/{group.unit} · 共缺 {group.totalGap}
-            {group.unit} · {group.lineCount} 个 PO
-            {sort === 'oa' ? ` · 所有 PO 最早交期 ${deliveryDate}` : ''}
+            共缺 {group.totalGap}
+            {group.unit} · 涉及 {group.lineCount} 个酒店 PO
+            {sort === 'oa' ? ` · 最早交期 ${deliveryDate}` : ''}
           </span>
           {sort === 'delivery' ? (
             <span
               className="mobile-home-task-list__delivery"
-              aria-label={`所有 PO 中，最早要求交期 ${deliveryDate}`}
+              aria-label={`最早要求交期 ${deliveryDate}`}
             >
-              所有 PO 最早交期{' '}
+              最早交期{' '}
               <span className="mobile-home-task-list__delivery-date">{deliveryDate}</span>
             </span>
           ) : null}

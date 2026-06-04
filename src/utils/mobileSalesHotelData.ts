@@ -48,6 +48,7 @@ function toOverviewRow(group: SalesHotelGroup): SalesHotelOverviewRow {
     pendingCount: pendingLines.length,
     deferCount: deferLines.length,
     urgentCount: urgentLines.length,
+    processed: pendingLines.length === 0,
     nearestDelivery: group.nearestDeliveryDate.slice(5),
   }
 }
@@ -61,13 +62,17 @@ export function buildSalesHotelPanelState(
   orders: ShortagePO[]
 ): SalesHotelDataPanelState | null {
   const groups = groupByHotel(orders)
+  const hotels = groups.map(toOverviewRow)
+  const processedHotelCount = hotels.filter((hotel) => hotel.processed).length
 
   if (command === `${SALES_HOTEL_CMD_PREFIX}open` || command === `${SALES_HOTEL_CMD_PREFIX}back`) {
     return {
       level: 'overview',
       skuCount: countTodayShortageLines(orders, new Date(), 'sales'),
       hotelCount: groups.length,
-      hotels: groups.map(toOverviewRow),
+      processedHotelCount,
+      pendingHotelCount: hotels.length - processedHotelCount,
+      hotels,
     }
   }
 
