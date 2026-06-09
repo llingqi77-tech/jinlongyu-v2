@@ -28,11 +28,6 @@ export function MobileChatMessageGrid({
       }`}
     >
       <div className="chat-message__grid">
-        {hasTime ? (
-          <div className="chat-message__time-cell">
-            <span className="chat-message__time">{time}</span>
-          </div>
-        ) : null}
         <div className={bodyClass}>{children}</div>
       </div>
     </div>

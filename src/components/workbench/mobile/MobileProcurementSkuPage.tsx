@@ -277,10 +277,13 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
     const totalActualFulfillQty = Number(activeForm.actualFulfillQty)
     if (
       !activeForm.actualFulfillQty.trim() ||
-      !Number.isFinite(totalActualFulfillQty) ||
-      totalActualFulfillQty < 0
+      !Number.isFinite(totalActualFulfillQty)
     ) {
       setToast('请填写有效的实际供货数量')
+      return
+    }
+    if (totalActualFulfillQty < group.totalGap) {
+      setToast(`实际供货数量不能小于缺货数量 ${group.totalGap}${group.unit}`)
       return
     }
     const actualFulfillQtyByLine = distributeActualFulfillQty(group.hotelRows, totalActualFulfillQty)
@@ -420,9 +423,15 @@ export function MobileProcurementSkuPage({ sku }: MobileProcurementSkuPageProps)
             <span>实际供货数量（{group.unit}）</span>
             <input
               type="number"
-              min={0}
+              min={group.totalGap}
               value={activeForm.actualFulfillQty}
               onChange={(e) => patchForm({ actualFulfillQty: e.target.value })}
+              onBlur={(e) => {
+                const v = Number(e.target.value)
+                if (!Number.isFinite(v) || v < group.totalGap) {
+                  patchForm({ actualFulfillQty: String(group.totalGap) })
+                }
+              }}
               readOnly={formReadOnly}
               aria-label="实际补货数量"
             />

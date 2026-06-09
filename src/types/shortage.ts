@@ -493,3 +493,48 @@ export type ProcurementPoFormState = {
 
 /** 角色选择页「OA 提醒通知」预览场景 */
 export type ProcurementOaPreviewOutcome = 'approved' | 'rejected'
+
+/** 销售历史订单：履约方式 */
+export type HistoryFulfillmentKind = 'direct' | 'replenish' | 'urgent' | 'defer'
+
+export interface HistoryOrderLine {
+  sku: string
+  productName: string
+  spec: string
+  qty: number
+  unit: string
+  kind: HistoryFulfillmentKind
+  signed: boolean
+}
+
+/** 销售历史订单（按客户收货日期归档） */
+export interface HistoryOrder {
+  id: string
+  city: string
+  hotelName: string
+  deliveryAddress: string
+  /** 收货日期 YYYY-MM-DD */
+  deliveryDate: string
+  lines: HistoryOrderLine[]
+}
+
+export type HistoryOrderStatus = 'completed' | 'partial' | 'deferred'
+
+export interface HistoryOrderFilter {
+  city: string | null
+  hotel: string | null
+  start: string
+  end: string
+}
+
+export interface HistoryOrderSummary {
+  orderCount: number
+  completedCount: number
+  deferredCount: number
+  cityCount: number
+  hotelCount: number
+  lineCount: number
+  signedLineCount: number
+  /** 履约完成率：已履约行 / 总缺货行（百分比整数） */
+  fulfillRate: number
+}

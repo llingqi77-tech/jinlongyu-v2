@@ -6,6 +6,7 @@ export function MobileWorkbenchShell() {
   const role = useShortageStore((s) => s.role)
   const phase = useShortageStore((s) => s.mobileOnboardingPhase)
   const procurementActiveSku = useShortageStore((s) => s.procurementActiveSku)
+  const salesHistoryOpen = useShortageStore((s) => s.salesHistoryOpen)
   const closeWorkbench = useShortageStore((s) => s.closeWorkbench)
   const today = new Date().toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -13,7 +14,7 @@ export function MobileWorkbenchShell() {
     day: 'numeric',
   })
 
-  const showChatHeader = phase === 'ready' && !procurementActiveSku
+  const showChatHeader = phase === 'ready' && !procurementActiveSku && !salesHistoryOpen
 
   return (
     <>

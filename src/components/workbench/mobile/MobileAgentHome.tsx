@@ -1,4 +1,3 @@
-import { MobileAgentComposer } from './MobileAgentComposer'
 import { MobileAgentThread } from './MobileAgentThread'
 import { MobileKpiDetailSheet } from './MobileKpiDetailSheet'
 import { MobileQuickActions } from './MobileQuickActions'
@@ -10,7 +9,6 @@ export function MobileAgentHome() {
       <MobileAgentThread />
       <footer className="mobile-chat-footer">
         <MobileQuickActions />
-        <MobileAgentComposer />
       </footer>
       <MobileKpiDetailSheet />
       <MobileTaskListSheet />

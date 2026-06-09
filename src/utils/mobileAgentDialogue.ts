@@ -107,7 +107,14 @@ export function sendFulfillmentPanelAction(userLabel: string, command: string) {
   void userLabel
   const reply = fulfillmentReplyForCommand(command, state.orders)
   if (reply) {
-    appendAgentReply(state, { text: reply.text, fulfillmentPanel: reply.panel }, true)
+    state.replaceMobileChat({
+      side: 'agent',
+      content: reply.text,
+      kind: 'fulfillment_data_panel',
+      meta: { fulfillmentPanel: reply.panel },
+      stream: false,
+    })
+    state.bumpMobileChatScrollToTop()
   }
 }
 
@@ -162,16 +169,15 @@ export function sendProcurementTaskListPanelAction(
   if (state.mobileOnboardingPhase !== 'ready') return
 
   state.setMobileProcurementQuickView(sort)
-  const hasChatContext = state.mobileChatMessages.some(
-    (m) => !(m.kind === 'welcome_card' && m.side === 'agent')
-  )
-  if (!hasChatContext) {
-    state.bumpMobileChatScrollToTop()
-    return
-  }
-
   void userLabel
-  appendAgentReply(state, { text: '', procurementListSort: sort }, false)
+  state.replaceMobileChat({
+    side: 'agent',
+    content: '',
+    kind: 'procurement_task_list_panel',
+    meta: { procurementListSort: sort },
+    stream: false,
+  })
+  state.bumpMobileChatScrollToTop()
 }
 
 export function handleMobileUserMessage(text: string): DialogueResult {

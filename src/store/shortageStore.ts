@@ -82,6 +82,7 @@ export interface ShortageState {
   mobileSalesQuickView: MobileSalesQuickView | null
   mobileProcurementQuickView: MobileProcurementQuickView | null
   mobileChatScrollToTopNonce: number
+  salesHistoryOpen: boolean
 
   openWorkbench: () => void
   closeWorkbench: () => void
@@ -109,6 +110,7 @@ export interface ShortageState {
   setToast: (msg: string | null) => void
   resetMobileAgentSession: () => void
   appendMobileChat: (msg: Omit<MobileChatMessage, 'id' | 'timestamp'>) => void
+  replaceMobileChat: (msg: Omit<MobileChatMessage, 'id' | 'timestamp'>) => void
   patchSalesHotelPanelMessage: (
     messageId: string,
     content: string,
@@ -131,6 +133,8 @@ export interface ShortageState {
   setMobileSalesQuickView: (view: MobileSalesQuickView | null) => void
   setMobileProcurementQuickView: (view: MobileProcurementQuickView) => void
   bumpMobileChatScrollToTop: () => void
+  openSalesHistory: () => void
+  closeSalesHistory: () => void
 }
 
 function patchLine(
@@ -185,6 +189,7 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
   mobileChatScrollTop: 0,
   mobileChatRestoreScrollOnNextMount: false,
   mobileChatScrollToTopNonce: 0,
+  salesHistoryOpen: false,
 
   openWorkbench: () => {
     const { signoffTimerId } = get()
@@ -261,6 +266,7 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       mobileProcurementQuickView: null,
       mobileChatScrollTop: 0,
       mobileChatRestoreScrollOnNextMount: false,
+      salesHistoryOpen: false,
     })
   },
 
@@ -668,6 +674,11 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
       ],
     })),
 
+  replaceMobileChat: (msg) =>
+    set({
+      mobileChatMessages: [{ ...msg, id: uid(), timestamp: nowTime() }],
+    }),
+
   patchSalesHotelPanelMessage: (messageId, content, panel) =>
     set((s) => ({
       mobileChatMessages: s.mobileChatMessages.map((m) =>
@@ -744,4 +755,6 @@ export const useShortageStore = create<ShortageState>((set, get) => ({
     ),
   bumpMobileChatScrollToTop: () =>
     set((s) => ({ mobileChatScrollToTopNonce: s.mobileChatScrollToTopNonce + 1 })),
+  openSalesHistory: () => set({ salesHistoryOpen: true }),
+  closeSalesHistory: () => set({ salesHistoryOpen: false }),
 }))

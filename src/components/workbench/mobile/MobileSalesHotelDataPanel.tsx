@@ -157,11 +157,23 @@ function SalesHotelOverviewPanel({
     setExpandedHotelKey(null)
   }
 
+  const openSalesHistory = useShortageStore((s) => s.openSalesHistory)
+
   return (
     <div className="mobile-sales-hotel-panel" role="group" aria-label="按酒店数据总览">
-      <div className="mobile-sales-hotel-panel__hero" aria-label="今日缺货品">
-        <span className="mobile-sales-hotel-panel__hero-label">今日缺货品</span>
-        <span className="mobile-sales-hotel-panel__hero-value">{panel.skuCount}</span>
+      <div className="mobile-sales-hotel-panel__header">
+        <div className="mobile-sales-hotel-panel__hero" aria-label="今日缺货品">
+          <span className="mobile-sales-hotel-panel__hero-label">今日缺货品</span>
+          <span className="mobile-sales-hotel-panel__hero-value">{panel.skuCount}</span>
+        </div>
+        <button
+          type="button"
+          className="mobile-sales-hotel-panel__history-entry"
+          onClick={openSalesHistory}
+        >
+          <span>历史订单查询</span>
+          <span aria-hidden>›</span>
+        </button>
       </div>
       <div className="mobile-sales-hotel-panel__filters" aria-label="酒店处理状态">
         <button

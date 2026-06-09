@@ -385,6 +385,10 @@
   padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
 }
 
+.platform-mobile .mobile-chat-footer:empty {
+  display: none;
+}
+
 .platform-mobile .mobile-quick-actions {
   flex-shrink: 0;
   padding: 8px 0 4px;
@@ -394,8 +398,7 @@
 .platform-mobile .mobile-quick-actions__scroll {
   display: flex;
   gap: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
   padding: 0 var(--mobile-page-pad);
   scrollbar-width: none;
 }
@@ -405,11 +408,13 @@
 }
 
 .platform-mobile .mobile-quick-actions__chip {
-  flex-shrink: 0;
-  padding: 7px 12px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 9px 8px;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.3;
+  text-align: center;
   color: var(--color-brand-dark, #e64500);
   white-space: nowrap;
   border-radius: 999px;
@@ -1045,15 +1050,20 @@
   gap: 8px;
 }
 
+.platform-mobile .mobile-sales-hotel-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .platform-mobile .mobile-sales-hotel-panel__hero {
   display: flex;
   align-items: baseline;
-  justify-content: center;
   gap: 6px;
-  width: 100%;
   margin: 0;
   padding: 0;
-  text-align: center;
+  flex-shrink: 0;
 }
 
 .platform-mobile .mobile-sales-hotel-panel__hero-label {
@@ -2141,8 +2151,8 @@ button.mobile-sales-hotel-panel__stat:active {
 }
 
 .platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__bubble--card) {
-  width: min(19rem, 100%);
-  max-width: min(19rem, calc(100vw - 2 * var(--mobile-page-pad) - 2rem));
+  width: 100%;
+  max-width: 100%;
 }
 
 .platform-mobile .mobile-chat-thread .chat-message--time-only:has(.chat-message__bubble--card) .chat-message__grid {
@@ -4725,4 +4735,486 @@ button.mobile-sales-hotel-panel__stat:active {
   padding: 10px;
   font-size: 14px;
   border-radius: 8px;
+}
+
+/* —— 销售：历史订单查询入口 —— */
+.platform-mobile .mobile-sales-hotel-panel__history-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 77, 0, 0.28);
+  background: linear-gradient(180deg, #fff4eb 0%, #ffe8d6 100%);
+  color: var(--color-brand-dark, #e64500);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.platform-mobile .mobile-sales-hotel-panel__history-entry:active {
+  opacity: 0.92;
+}
+
+/* —— 历史订单查询页 —— */
+.platform-mobile .sales-history-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.platform-mobile .sales-history-filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.platform-mobile .sales-history-chip {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  color: var(--color-ink, #1f2937);
+}
+
+.platform-mobile .sales-history-chip--active {
+  color: #fff;
+  border-color: var(--color-brand, #ff4d00);
+  background: var(--color-brand, #ff4d00);
+}
+
+.platform-mobile .sales-history-filters__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.platform-mobile .sales-history-city-select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink, #1f2937);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.platform-mobile .sales-history-chip--date {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.platform-mobile .sales-history-chip--date,
+.platform-mobile .sales-history-chip--date.sales-history-chip--active {
+  color: var(--color-ink, #1f2937);
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.14);
+}
+
+/* —— 日期段选择器（底部弹层日历） —— */
+.platform-mobile .sales-date-picker {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.platform-mobile .sales-date-picker__scrim {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.platform-mobile .sales-date-picker__sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: 86%;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.platform-mobile .sales-date-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.platform-mobile .sales-date-picker__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-ink, #1f2937);
+}
+
+.platform-mobile .sales-date-picker__close {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--color-muted, #8a8a8a);
+  background: none;
+  border: none;
+}
+
+.platform-mobile .sales-date-picker__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.platform-mobile .sales-date-picker__weekday {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink, #1f2937);
+}
+
+.platform-mobile .sales-date-picker__weekday--weekend {
+  color: var(--color-brand, #ff4d00);
+}
+
+.platform-mobile .sales-date-picker__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.platform-mobile .sales-date-picker__month-title {
+  margin: 12px 4px 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-ink, #1f2937);
+}
+
+.platform-mobile .sales-date-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 2px;
+}
+
+.platform-mobile .sales-date-picker__cell {
+  aspect-ratio: 1 / 1;
+}
+
+.platform-mobile .sales-date-picker__day {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink, #1f2937);
+}
+
+.platform-mobile .sales-date-picker__day--disabled {
+  color: #c7c7cc;
+}
+
+.platform-mobile .sales-date-picker__day--in-range {
+  background: rgba(255, 77, 0, 0.12);
+}
+
+.platform-mobile .sales-date-picker__day--start,
+.platform-mobile .sales-date-picker__day--end {
+  color: #fff;
+  background: rgba(255, 77, 0, 0.12);
+}
+
+.platform-mobile .sales-date-picker__day--start .sales-date-picker__day-num,
+.platform-mobile .sales-date-picker__day--end .sales-date-picker__day-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-brand, #ff4d00);
+}
+
+.platform-mobile .sales-date-picker__day-tag {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.platform-mobile .sales-date-picker__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.platform-mobile .sales-date-picker__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink, #1f2937);
+}
+
+.platform-mobile .sales-date-picker__confirm {
+  flex-shrink: 0;
+  padding: 11px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff7a3c 0%, #ff4d00 100%);
+}
+
+.platform-mobile .sales-history-field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.platform-mobile .sales-history-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-muted, #8a8a8a);
+}
+
+.platform-mobile .sales-history-field select,
+.platform-mobile .sales-history-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  font-size: 14px;
+  color: var(--color-ink, #1f2937);
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.platform-mobile .sales-history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.platform-mobile .sales-history-summary__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.platform-mobile .sales-history-summary__item {
+  background: #fff1ec;
+  border-color: rgba(255, 77, 0, 0.28);
+}
+
+.platform-mobile .sales-history-summary__item strong {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #e64500;
+}
+
+.platform-mobile .sales-history-summary__item span {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e64500;
+}
+
+.platform-mobile .sales-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.platform-mobile .sales-history-card {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.platform-mobile .sales-history-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.platform-mobile .sales-history-card__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.platform-mobile .sales-history-card__hotel {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-ink, #1f2937);
+}
+
+.platform-mobile .sales-history-card__city {
+  font-size: 11px;
+  color: var(--color-muted, #8a8a8a);
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #f1f1f3;
+}
+
+.platform-mobile .sales-history-card__status {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.platform-mobile .sales-history-card__status--completed {
+  color: #1a7f37;
+  background: #e6f4ea;
+}
+
+.platform-mobile .sales-history-card__status--partial {
+  color: #b26a00;
+  background: #fff3e0;
+}
+
+.platform-mobile .sales-history-card__status--deferred {
+  color: #7c3aed;
+  background: #f1e9ff;
+}
+
+.platform-mobile .sales-history-card__meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-muted, #8a8a8a);
+}
+
+.platform-mobile .sales-history-card__lines {
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  list-style: none;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.platform-mobile .sales-history-card__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.platform-mobile .sales-history-card__line-name {
+  color: var(--color-ink, #1f2937);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-mobile .sales-history-card__line-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--color-muted, #8a8a8a);
+}
+
+.platform-mobile .sales-history-card__tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #555;
+  background: #eee;
+}
+
+.platform-mobile .sales-history-card__tag--direct {
+  color: #c2410c;
+  background: #ffece1;
+}
+
+.platform-mobile .sales-history-card__tag--replenish {
+  color: #1d4ed8;
+  background: #e6edff;
+}
+
+.platform-mobile .sales-history-card__tag--urgent {
+  color: #b45309;
+  background: #fff3d6;
+}
+
+.platform-mobile .sales-history-card__tag--defer {
+  color: #7c3aed;
+  background: #f1e9ff;
+}
+
+.platform-mobile .sales-history-card__sign {
+  font-size: 10px;
+  color: #999;
+}
+
+.platform-mobile .sales-history-card__sign--done {
+  color: #1a7f37;
+}
+
+.platform-mobile .sales-history-empty {
+  margin: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-muted, #8a8a8a);
 }
